@@ -104,8 +104,9 @@ describe('Generate Pipeline (Integration)', () => {
     await genPipeline.run(FIXTURES, { outputDir: OUTPUT_DIR });
 
     const content = readFileSync(join(OUTPUT_DIR, 'modules.md'), 'utf-8');
-    expect(content).toContain('UserService');
-    expect(content).toContain('UserController');
+    // Fixture modules have 1 file each, so they render in Standalone Files section
+    expect(content).toContain('app/Services');
+    expect(content).toContain('app/Http');
   });
 
   it('dependencies.md shows directed references', async () => {
