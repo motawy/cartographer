@@ -83,7 +83,7 @@ describe('generateRoot', () => {
     expect(result).toContain('Architecture pattern could not be determined');
   });
 
-  it('qualifies interface contracts when adoption is low', () => {
+  it('states interface adoption percentage with low adoption', () => {
     const stats = makeStats({
       directories: [
         { path: 'objects/Interfaces', fileCount: 50, symbolCount: 168, classCount: 0, dominantKinds: ['interface'] },
@@ -95,12 +95,10 @@ describe('generateRoot', () => {
       classesWithInterface: 39,
     });
     const result = generateRoot(stats, conventions);
-    expect(result).toContain('interface');
-    expect(result).toContain('low');
-    expect(result).not.toContain('uses interface contracts');
+    expect(result).toContain('interfaces (0% of classes implement one)');
   });
 
-  it('confirms interface contracts when adoption is high', () => {
+  it('states interface adoption percentage with high adoption', () => {
     const stats = makeStats({
       directories: [
         { path: 'app/Contracts', fileCount: 20, symbolCount: 50, classCount: 0, dominantKinds: ['interface'] },
@@ -112,6 +110,28 @@ describe('generateRoot', () => {
       classesWithInterface: 45,
     });
     const result = generateRoot(stats, conventions);
-    expect(result).toContain('interface contracts');
+    expect(result).toContain('interfaces (45% of classes implement one)');
+  });
+
+  it('includes top adopting modules in interface description', () => {
+    const stats = makeStats({
+      directories: [
+        { path: 'app/Contracts', fileCount: 20, symbolCount: 50, classCount: 0, dominantKinds: ['interface'] },
+        { path: 'app/Services', fileCount: 30, symbolCount: 100, classCount: 100, dominantKinds: ['class'] },
+      ],
+    });
+    const conventions = makeConventions({
+      totalClasses: 100,
+      classesWithInterface: 45,
+      interfaceAdoptionByModule: new Map([
+        ['objects/Entity', { total: 50, withInterface: 20 }],
+        ['objects/Status', { total: 30, withInterface: 10 }],
+        ['app/Tiny', { total: 5, withInterface: 3 }],
+      ]),
+    });
+    const result = generateRoot(stats, conventions);
+    expect(result).toContain('concentrated in objects/Entity 40%, objects/Status 33%');
+    // app/Tiny excluded — fewer than 10 classes
+    expect(result).not.toContain('app/Tiny');
   });
 });

@@ -65,8 +65,9 @@ function detectArchitecture(
     patterns.push('model layer');
   }
   if (dirNames.has('contracts') || dirNames.has('interfaces')) {
-    if (interfaceAdoption !== null && interfaceAdoption < 5) {
-      patterns.push(`dedicated interfaces directory (adoption low at ${interfaceAdoption}%)`);
+    if (interfaceAdoption !== null) {
+      const topModules = conventions ? getTopAdoptingModules(conventions) : '';
+      patterns.push(`interfaces (${interfaceAdoption}% of classes implement one${topModules})`);
     } else {
       patterns.push('interface contracts');
     }
@@ -78,6 +79,18 @@ function detectArchitecture(
 
   return `This codebase uses ${patterns.join(', ')}. ` +
     `Top-level directories organize code by responsibility.`;
+}
+
+function getTopAdoptingModules(conventions: ConventionsData): string {
+  const entries = [...conventions.interfaceAdoptionByModule.entries()]
+    .filter(([, v]) => v.total >= 10 && v.withInterface > 0)
+    .map(([mod, v]) => ({ mod, rate: Math.round((v.withInterface / v.total) * 100) }))
+    .sort((a, b) => b.rate - a.rate)
+    .slice(0, 3);
+
+  if (entries.length === 0) return '';
+  const list = entries.map(e => `${e.mod} ${e.rate}%`).join(', ');
+  return `, concentrated in ${list}`;
 }
 
 function capitalize(s: string): string {
