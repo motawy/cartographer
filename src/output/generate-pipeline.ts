@@ -192,18 +192,21 @@ export class GeneratePipeline {
                 ELSE '' END AS module_dir,
          (SELECT COUNT(*)::int FROM symbol_references WHERE target_symbol_id = s.id) AS ref_count,
          COALESCE(
-           (SELECT array_agg(sr.target_qualified_name)
+           (SELECT array_agg(COALESCE(ts.qualified_name, sr.target_qualified_name))
             FROM symbol_references sr
+            LEFT JOIN symbols ts ON sr.target_symbol_id = ts.id
             WHERE sr.source_symbol_id = s.id AND sr.reference_kind = 'implementation'),
            '{}'
          ) AS implements,
-         (SELECT sr.target_qualified_name
+         (SELECT COALESCE(ts.qualified_name, sr.target_qualified_name)
           FROM symbol_references sr
+          LEFT JOIN symbols ts ON sr.target_symbol_id = ts.id
           WHERE sr.source_symbol_id = s.id AND sr.reference_kind = 'inheritance'
           LIMIT 1) AS extends_from,
          COALESCE(
-           (SELECT array_agg(sr.target_qualified_name)
+           (SELECT array_agg(COALESCE(ts.qualified_name, sr.target_qualified_name))
             FROM symbol_references sr
+            LEFT JOIN symbols ts ON sr.target_symbol_id = ts.id
             WHERE sr.source_symbol_id = s.id AND sr.reference_kind = 'trait_use'),
            '{}'
          ) AS uses_traits
