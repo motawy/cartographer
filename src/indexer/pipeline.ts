@@ -5,6 +5,8 @@ import { AstParser } from './ast-parser.js';
 import { RepoRepository } from '../db/repositories/repo-repository.js';
 import { FileRepository } from '../db/repositories/file-repository.js';
 import { SymbolRepository } from '../db/repositories/symbol-repository.js';
+import { ReferenceRepository } from '../db/repositories/reference-repository.js';
+import { extractReferences } from './reference-extractor.js';
 import { IndexError } from '../errors.js';
 import { basename, resolve } from 'path';
 import { appendFileSync, writeFileSync } from 'fs';
@@ -18,11 +20,13 @@ export class IndexPipeline {
   private repoRepo: RepoRepository;
   private fileRepo: FileRepository;
   private symbolRepo: SymbolRepository;
+  private referenceRepo: ReferenceRepository;
 
   constructor(pool: pg.Pool) {
     this.repoRepo = new RepoRepository(pool);
     this.fileRepo = new FileRepository(pool);
     this.symbolRepo = new SymbolRepository(pool);
+    this.referenceRepo = new ReferenceRepository(pool);
   }
 
   async run(
@@ -79,7 +83,7 @@ export class IndexPipeline {
       const file = toProcess[i];
       try {
         const fileStart = Date.now();
-        const { symbols, linesOfCode } = parser.parse(file);
+        const { symbols, linesOfCode, tree, context } = parser.parse(file);
         const fileRecord = await this.fileRepo.upsert(
           repo.id,
           file.relativePath,
@@ -87,7 +91,17 @@ export class IndexPipeline {
           file.hash,
           linesOfCode
         );
-        await this.symbolRepo.replaceFileSymbols(fileRecord.id, symbols);
+        const symbolIdMap = await this.symbolRepo.replaceFileSymbols(fileRecord.id, symbols);
+
+        // Extract and store references (best-effort)
+        try {
+          const references = extractReferences(tree, context, symbols);
+          await this.referenceRepo.replaceFileReferences(fileRecord.id, symbolIdMap, references);
+        } catch (refErr) {
+          if (opts.verbose) {
+            log(`  Warning: reference extraction failed for ${file.relativePath}: ${refErr}`);
+          }
+        }
 
         if (opts.verbose) {
           log(`  [${i + 1}/${toProcess.length}] ${file.relativePath} — ${symbols.length} symbols (${this.elapsed(fileStart)})`);
@@ -102,13 +116,19 @@ export class IndexPipeline {
 
     log(`Parsing complete (${this.elapsed(parseStart)})`);
 
-    // 6. Update repo timestamp
+    // 6. Cross-file reference resolution
+    const resolution = await this.referenceRepo.resolveTargets(repo.id);
+    log(`References: ${resolution.resolved} resolved, ${resolution.unresolved} unresolved`);
+
+    // 7. Update repo timestamp
     await this.repoRepo.updateLastIndexed(repo.id);
 
-    // 7. Report
+    // 8. Report
     const totalSymbols = await this.symbolRepo.countByRepo(repo.id);
+    const totalRefs = await this.referenceRepo.countByRepo(repo.id);
     log(
-      `Done. Processed ${toProcess.length - errors} files (${errors} errors). ${totalSymbols} symbols indexed. Total time: ${this.elapsed(runStart)}`
+      `Done. Processed ${toProcess.length - errors} files (${errors} errors). ` +
+      `${totalSymbols} symbols, ${totalRefs} references indexed. Total time: ${this.elapsed(runStart)}`
     );
 
     if (errors > 0) {
