@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import Parser from 'tree-sitter';
-// @ts-expect-error - tree-sitter-php types
 import PHP from 'tree-sitter-php';
 import { parsePHP } from '../../../src/indexer/parsers/php.js';
 import { readFileSync } from 'fs';

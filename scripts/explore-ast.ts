@@ -1,5 +1,4 @@
 import Parser from 'tree-sitter';
-// @ts-expect-error - tree-sitter-php types may not match exactly
 import PHP from 'tree-sitter-php';
 
 const parser = new Parser();

@@ -17,7 +17,6 @@ export class AstParser {
 
   constructor() {
     this.phpParser = new Parser();
-    // @ts-expect-error - tree-sitter-php has no type declarations
     this.phpParser.setLanguage(PHP.php);
   }
 
