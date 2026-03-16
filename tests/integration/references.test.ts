@@ -6,7 +6,7 @@ import type { CartographConfig } from '../../src/types.js';
 
 const TEST_DB = {
   host: 'localhost',
-  port: 5433,
+  port: 5435,
   database: 'cartograph_test',
   user: 'cartograph',
   password: 'localdev',

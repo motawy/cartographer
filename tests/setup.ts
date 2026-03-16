@@ -9,7 +9,7 @@ export async function setup(): Promise<void> {
   // Create test database if it doesn't exist
   const adminPool = new pg.Pool({
     host: 'localhost',
-    port: 5433,
+    port: 5435,
     database: 'postgres',
     user: 'cartograph',
     password: 'localdev',
@@ -27,7 +27,7 @@ export async function setup(): Promise<void> {
   // Run migrations on test DB
   const testPool = new pg.Pool({
     host: 'localhost',
-    port: 5433,
+    port: 5435,
     database: 'cartograph_test',
     user: 'cartograph',
     password: 'localdev',

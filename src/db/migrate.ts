@@ -51,7 +51,7 @@ const isDirectRun = process.argv[1]?.includes('migrate');
 if (isDirectRun) {
   const pool = new pg.Pool({
     host: process.env.CARTOGRAPH_DB_HOST || 'localhost',
-    port: parseInt(process.env.CARTOGRAPH_DB_PORT || '5433'),
+    port: parseInt(process.env.CARTOGRAPH_DB_PORT || '5435'),
     database: process.env.CARTOGRAPH_DB_NAME || 'cartograph',
     user: process.env.CARTOGRAPH_DB_USER || 'cartograph',
     password: process.env.CARTOGRAPH_DB_PASSWORD || 'localdev',

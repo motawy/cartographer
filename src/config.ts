@@ -13,7 +13,7 @@ export function loadConfig(repoPath: string): CartographConfig {
     exclude: DEFAULT_EXCLUDES,
     database: {
       host: process.env.CARTOGRAPH_DB_HOST || 'localhost',
-      port: parseInt(process.env.CARTOGRAPH_DB_PORT || '5433'),
+      port: parseInt(process.env.CARTOGRAPH_DB_PORT || '5435'),
       name: process.env.CARTOGRAPH_DB_NAME || 'cartograph',
       user: process.env.CARTOGRAPH_DB_USER || 'cartograph',
       password: process.env.CARTOGRAPH_DB_PASSWORD || 'localdev',

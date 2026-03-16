@@ -7,7 +7,7 @@ import type { ParsedSymbol } from '../../../src/types.js';
 
 const TEST_POOL_CONFIG = {
   host: 'localhost',
-  port: 5433,
+  port: 5435,
   database: 'cartograph_test',
   user: 'cartograph',
   password: 'localdev',
