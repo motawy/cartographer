@@ -57,13 +57,21 @@ export function generateConventions(data: ConventionsData): string {
   }
 
   if (data.methodNames.length > 0) {
-    const camelCount = data.methodNames.filter(n => /^[a-z_][a-zA-Z0-9]*$/.test(n)).length;
-    const camelPct = pct(camelCount, data.methodNames.length);
-    lines.push(`- **Method naming:** ${camelPct}% camelCase/snake_case (sample of ${data.methodNames.length})`);
+    // Filter out any magic methods that slipped through
+    const nonMagic = data.methodNames.filter(n => !n.startsWith('__'));
+    if (nonMagic.length > 0) {
+      const camelCount = nonMagic.filter(n => /^[a-z][a-zA-Z0-9]*$/.test(n)).length;
+      const snakeCount = nonMagic.filter(n => /^[a-z][a-z0-9_]*$/.test(n) && n.includes('_')).length;
+      const camelPct = pct(camelCount, nonMagic.length);
+      const snakePct = pct(snakeCount, nonMagic.length);
 
-    const magicCount = data.methodNames.filter(n => n.startsWith('__')).length;
-    if (magicCount > 0) {
-      lines.push(`- **Magic methods:** ${magicCount} found in sample (${pct(magicCount, data.methodNames.length)}%)`);
+      if (camelPct > 0 && snakePct > 0) {
+        lines.push(`- **Method naming:** ${camelPct}% camelCase, ${snakePct}% snake_case (sample of ${nonMagic.length})`);
+      } else if (camelPct > 0) {
+        lines.push(`- **Method naming:** ${camelPct}% camelCase (sample of ${nonMagic.length})`);
+      } else if (snakePct > 0) {
+        lines.push(`- **Method naming:** ${snakePct}% snake_case (sample of ${nonMagic.length})`);
+      }
     }
   }
 

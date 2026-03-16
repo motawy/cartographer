@@ -365,6 +365,7 @@ export class GeneratePipeline {
     const { rows: methodNameRows } = await this.pool.query(
       `SELECT s.name FROM symbols s JOIN files f ON s.file_id = f.id
        WHERE f.repo_id = $1 AND s.kind = 'method'
+         AND s.name NOT LIKE E'\\_\\_%'
        LIMIT 200`,
       [repoId]
     );

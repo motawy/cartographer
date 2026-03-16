@@ -66,16 +66,36 @@ describe('generateConventions', () => {
     expect(result).toContain('app/Big');
   });
 
-  it('detects naming conventions', () => {
-    const result = generateConventions(makeConventions());
-    expect(result).toContain('PascalCase');
-    expect(result).toContain('camelCase');
+  it('detects camelCase method naming', () => {
+    const result = generateConventions(makeConventions({
+      methodNames: ['findById', 'createUser', 'getName', 'updateProfile', 'deleteRecord'],
+    }));
+    expect(result).toContain('100% camelCase');
+    expect(result).not.toContain('snake_case');
   });
 
-  it('detects magic methods', () => {
-    const result = generateConventions(makeConventions());
-    expect(result).toContain('Magic methods');
-    expect(result).toContain('1 found in sample');
+  it('detects snake_case method naming', () => {
+    const result = generateConventions(makeConventions({
+      methodNames: ['find_by_id', 'create_user', 'get_name', 'update_profile', 'delete_record'],
+    }));
+    expect(result).toContain('100% snake_case');
+    expect(result).not.toContain('camelCase');
+  });
+
+  it('reports mixed naming styles', () => {
+    const result = generateConventions(makeConventions({
+      methodNames: ['findById', 'createUser', 'get_name', 'update_profile'],
+    }));
+    expect(result).toContain('50% camelCase');
+    expect(result).toContain('50% snake_case');
+  });
+
+  it('does not count magic methods in naming sample', () => {
+    const result = generateConventions(makeConventions({
+      methodNames: ['findById', 'createUser'],
+    }));
+    expect(result).not.toContain('__construct');
+    expect(result).toContain('camelCase');
   });
 
   it('handles zero classes gracefully', () => {
