@@ -254,23 +254,7 @@ export interface ModuleInfo {
 
 - [ ] **Step 2: Populate `fileCount` in queryModules()**
 
-In `src/output/generate-pipeline.ts`, in `queryModules()`, add a window function to the existing query to get the file count per module without a separate query. Add this to the SELECT list (after the `uses_traits` subquery):
-
-```sql
-(SELECT COUNT(DISTINCT f2.id)
- FROM files f2
- WHERE split_part(f2.path, '/', 1) ||
-   CASE WHEN position('/' in f2.path) > 0
-        THEN '/' || split_part(f2.path, '/', 2)
-        ELSE '' END = split_part(f.path, '/', 1) ||
-   CASE WHEN position('/' in f.path) > 0
-        THEN '/' || split_part(f.path, '/', 2)
-        ELSE '' END
-   AND f2.repo_id = $1
-) AS module_file_count
-```
-
-Then when building moduleMap, track file counts per module using a Set of file paths. Replace the aggregation section:
+In `src/output/generate-pipeline.ts`, in `queryModules()`, the query already selects `f.path AS file_path` (line 184). Use this to track distinct files per module via a Set — no extra SQL needed. Replace the aggregation section:
 
 ```typescript
     const moduleMap = new Map<string, { symbols: ModuleSymbol[]; filePaths: Set<string> }>();
