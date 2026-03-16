@@ -43,6 +43,7 @@ export interface ModuleSymbol {
 export interface ModuleInfo {
   path: string;
   symbols: ModuleSymbol[];
+  fileCount?: number;
 }
 
 export interface ModuleDependency {
@@ -213,11 +214,12 @@ export class GeneratePipeline {
       [repoId]
     );
 
-    const moduleMap = new Map<string, ModuleSymbol[]>();
+    const moduleMap = new Map<string, { symbols: ModuleSymbol[]; filePaths: Set<string> }>();
     for (const row of rows) {
       const dir = row.module_dir as string;
-      const list = moduleMap.get(dir) || [];
-      list.push({
+      const entry = moduleMap.get(dir) || { symbols: [], filePaths: new Set() };
+      entry.filePaths.add(row.file_path as string);
+      entry.symbols.push({
         qualifiedName: row.qualified_name as string,
         kind: row.kind as string,
         linesOfCode: row.lines_of_code as number,
@@ -226,11 +228,15 @@ export class GeneratePipeline {
         traits: (row.uses_traits as string[]) || [],
         referenceCount: row.ref_count as number,
       });
-      moduleMap.set(dir, list);
+      moduleMap.set(dir, entry);
     }
 
     return Array.from(moduleMap.entries())
-      .map(([path, symbols]) => ({ path, symbols }))
+      .map(([path, { symbols, filePaths }]) => ({
+        path,
+        symbols,
+        fileCount: filePaths.size,
+      }))
       .sort((a, b) => {
         const aTotal = a.symbols.reduce((sum, s) => sum + s.referenceCount, 0);
         const bTotal = b.symbols.reduce((sum, s) => sum + s.referenceCount, 0);
