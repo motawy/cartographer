@@ -3,12 +3,14 @@ import Parser from 'tree-sitter';
 import PHP from 'tree-sitter-php';
 import { readFileSync } from 'fs';
 import type { DiscoveredFile, ParsedSymbol } from '../types.js';
-import { parsePHP } from './parsers/php.js';
+import { parsePHP, type NamespaceContext } from './parsers/php.js';
 import { ParseError } from '../errors.js';
 
 export interface AstParseResult {
   symbols: ParsedSymbol[];
   linesOfCode: number;
+  tree: Parser.Tree;
+  context: NamespaceContext;
 }
 
 export class AstParser {
@@ -25,8 +27,14 @@ export class AstParser {
 
     switch (file.language) {
       case 'php': {
-        const result = parsePHP(source, this.phpParser);
-        return { symbols: result.symbols, linesOfCode };
+        const tree = this.phpParser.parse(source);
+        const result = parsePHP(tree);
+        return {
+          symbols: result.symbols,
+          linesOfCode,
+          tree,
+          context: { namespace: result.namespace, imports: result.imports },
+        };
       }
       default:
         throw new ParseError(

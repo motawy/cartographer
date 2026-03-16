@@ -19,7 +19,7 @@ describe('PHP Parser', () => {
   describe('class extraction', () => {
     it('extracts class with correct qualified name', () => {
       const source = readFileSync(join(FIXTURES, 'app/Models/User.php'), 'utf-8');
-      const result = parsePHP(source, parser);
+      const result = parsePHP(parser.parse(source));
 
       expect(result.namespace).toBe('App\\Models');
       const classes = result.symbols.filter((s) => s.kind === 'class');
@@ -32,7 +32,7 @@ describe('PHP Parser', () => {
 
     it('extracts extends and implements from class', () => {
       const source = readFileSync(join(FIXTURES, 'app/Models/User.php'), 'utf-8');
-      const result = parsePHP(source, parser);
+      const result = parsePHP(parser.parse(source));
       const user = result.symbols[0];
 
       expect(user.metadata.extends).toBe(
@@ -45,7 +45,7 @@ describe('PHP Parser', () => {
 
     it('extracts line range for class', () => {
       const source = readFileSync(join(FIXTURES, 'app/Models/User.php'), 'utf-8');
-      const result = parsePHP(source, parser);
+      const result = parsePHP(parser.parse(source));
       const user = result.symbols[0];
 
       expect(user.lineStart).toBeGreaterThan(0);
@@ -54,7 +54,7 @@ describe('PHP Parser', () => {
 
     it('detects trait usage in class metadata', () => {
       const source = readFileSync(join(FIXTURES, 'app/Models/User.php'), 'utf-8');
-      const result = parsePHP(source, parser);
+      const result = parsePHP(parser.parse(source));
       const user = result.symbols[0];
 
       expect(user.metadata.traits).toBeDefined();
@@ -68,7 +68,7 @@ describe('PHP Parser', () => {
         join(FIXTURES, 'app/Contracts/UserServiceInterface.php'),
         'utf-8'
       );
-      const result = parsePHP(source, parser);
+      const result = parsePHP(parser.parse(source));
 
       expect(result.symbols).toHaveLength(1);
       const iface = result.symbols[0];
@@ -88,7 +88,7 @@ describe('PHP Parser', () => {
         join(FIXTURES, 'app/Traits/HasTimestamps.php'),
         'utf-8'
       );
-      const result = parsePHP(source, parser);
+      const result = parsePHP(parser.parse(source));
 
       expect(result.symbols).toHaveLength(1);
       const trait = result.symbols[0];
@@ -111,7 +111,7 @@ describe('PHP Parser', () => {
         join(FIXTURES, 'app/Services/UserService.php'),
         'utf-8'
       );
-      const result = parsePHP(source, parser);
+      const result = parsePHP(parser.parse(source));
       const service = result.symbols[0];
 
       const methods = service.children.filter((c) => c.kind === 'method');
@@ -127,7 +127,7 @@ describe('PHP Parser', () => {
         join(FIXTURES, 'app/Services/UserService.php'),
         'utf-8'
       );
-      const result = parsePHP(source, parser);
+      const result = parsePHP(parser.parse(source));
       const service = result.symbols[0];
 
       const findById = service.children.find((c) => c.name === 'findById');
@@ -141,7 +141,7 @@ describe('PHP Parser', () => {
         join(FIXTURES, 'app/Services/UserService.php'),
         'utf-8'
       );
-      const result = parsePHP(source, parser);
+      const result = parsePHP(parser.parse(source));
       const service = result.symbols[0];
 
       const findById = service.children.find((c) => c.name === 'findById');
@@ -153,7 +153,7 @@ describe('PHP Parser', () => {
         join(FIXTURES, 'app/Services/UserService.php'),
         'utf-8'
       );
-      const result = parsePHP(source, parser);
+      const result = parsePHP(parser.parse(source));
       const service = result.symbols[0];
 
       const findById = service.children.find((c) => c.name === 'findById');
@@ -168,7 +168,7 @@ describe('PHP Parser', () => {
         join(FIXTURES, 'app/Services/UserService.php'),
         'utf-8'
       );
-      const result = parsePHP(source, parser);
+      const result = parsePHP(parser.parse(source));
       const service = result.symbols[0];
 
       const constructor = service.children.find(
@@ -182,7 +182,7 @@ describe('PHP Parser', () => {
         join(FIXTURES, 'app/Services/UserService.php'),
         'utf-8'
       );
-      const result = parsePHP(source, parser);
+      const result = parsePHP(parser.parse(source));
       const service = result.symbols[0];
 
       const findById = service.children.find((c) => c.name === 'findById');
@@ -197,7 +197,7 @@ describe('PHP Parser', () => {
         join(FIXTURES, 'app/Services/UserService.php'),
         'utf-8'
       );
-      const result = parsePHP(source, parser);
+      const result = parsePHP(parser.parse(source));
       const service = result.symbols[0];
 
       const props = service.children.filter((c) => c.kind === 'property');
@@ -214,7 +214,7 @@ describe('PHP Parser', () => {
         join(FIXTURES, 'app/Http/Controllers/UserController.php'),
         'utf-8'
       );
-      const result = parsePHP(source, parser);
+      const result = parsePHP(parser.parse(source));
       const controller = result.symbols[0];
 
       const props = controller.children.filter((c) => c.kind === 'property');
@@ -229,7 +229,7 @@ describe('PHP Parser', () => {
   describe('constant extraction', () => {
     it('extracts class constants', () => {
       const source = readFileSync(join(FIXTURES, 'app/Models/User.php'), 'utf-8');
-      const result = parsePHP(source, parser);
+      const result = parsePHP(parser.parse(source));
       const user = result.symbols[0];
 
       const constants = user.children.filter((c) => c.kind === 'constant');
@@ -245,7 +245,7 @@ describe('PHP Parser', () => {
         join(FIXTURES, 'app/Services/UserService.php'),
         'utf-8'
       );
-      const result = parsePHP(source, parser);
+      const result = parsePHP(parser.parse(source));
 
       expect(result.imports.get('User')).toBe('App\\Models\\User');
       expect(result.imports.get('UserRepository')).toBe(
@@ -261,13 +261,13 @@ use App\\Models\\User as UserModel;
 
 class UserTest {}
 `;
-      const result = parsePHP(source, parser);
+      const result = parsePHP(parser.parse(source));
       expect(result.imports.get('UserModel')).toBe('App\\Models\\User');
     });
 
     it('resolves type names in extends/implements via imports', () => {
       const source = readFileSync(join(FIXTURES, 'app/Models/User.php'), 'utf-8');
-      const result = parsePHP(source, parser);
+      const result = parsePHP(parser.parse(source));
       const user = result.symbols[0];
 
       expect(user.metadata.extends).toBe(
@@ -279,7 +279,7 @@ class UserTest {}
   describe('docblock extraction', () => {
     it('extracts docblock from class', () => {
       const source = readFileSync(join(FIXTURES, 'app/Models/User.php'), 'utf-8');
-      const result = parsePHP(source, parser);
+      const result = parsePHP(parser.parse(source));
       const user = result.symbols[0];
 
       expect(user.docblock).toContain('User model');
@@ -290,7 +290,7 @@ class UserTest {}
         join(FIXTURES, 'app/Services/UserService.php'),
         'utf-8'
       );
-      const result = parsePHP(source, parser);
+      const result = parsePHP(parser.parse(source));
       const service = result.symbols[0];
 
       const findById = service.children.find((c) => c.name === 'findById');
@@ -302,7 +302,7 @@ class UserTest {}
         join(FIXTURES, 'app/Contracts/UserServiceInterface.php'),
         'utf-8'
       );
-      const result = parsePHP(source, parser);
+      const result = parsePHP(parser.parse(source));
       const iface = result.symbols[0];
 
       expect(iface.docblock).toContain('Contract for user service');
@@ -324,7 +324,7 @@ function calculate_age(int $birthYear): int
     return date('Y') - $birthYear;
 }
 `;
-      const result = parsePHP(source, parser);
+      const result = parsePHP(parser.parse(source));
 
       expect(result.symbols).toHaveLength(2);
       expect(result.symbols[0].kind).toBe('function');

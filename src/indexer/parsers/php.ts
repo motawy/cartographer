@@ -8,13 +8,12 @@ import type {
 
 type SyntaxNode = Parser.SyntaxNode;
 
-interface NamespaceContext {
+export interface NamespaceContext {
   namespace: string | null;
   imports: Map<string, string>; // short name or alias → fully qualified name
 }
 
-export function parsePHP(source: string, parser: Parser): ParseResult {
-  const tree = parser.parse(source);
+export function parsePHP(tree: Parser.Tree): ParseResult {
   const root = tree.rootNode;
 
   const context: NamespaceContext = {
