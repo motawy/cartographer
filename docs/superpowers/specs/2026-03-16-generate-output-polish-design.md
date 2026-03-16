@@ -146,7 +146,15 @@ Apply the same detection in the directory map (`root-generator.ts`): pass a `fil
 
 **Why not lowercase both `resolveTypeName()` functions?** The php.ts version feeds into `symbols.qualified_name` (via `qualifyName()` and metadata like `extends`, `implements`). Lowercasing there would cascade into display names and metadata. Only the reference extractor's version feeds into `target_qualified_name`, which is never displayed directly.
 
-**Migration consideration:** Existing data must be re-indexed. No DB migration needed — the schema doesn't change, only the stored values do.
+**Performance:** Add a functional index on `LOWER(qualified_name)` so the `resolveTargets()` JOIN doesn't do a full table scan on 123K symbols:
+
+```sql
+CREATE INDEX idx_symbols_qualified_lower ON symbols(LOWER(qualified_name));
+```
+
+This goes in a new migration file (`src/db/migrations/006_add-lowercase-qualified-index.sql`).
+
+**Migration consideration:** Existing data must be re-indexed after deploying. The new migration adds the index; the re-index populates lowercase `target_qualified_name` values.
 
 **Impact:** Resolves ~18,000 previously unresolved references. The dependency graph and conventions stats become dramatically more accurate.
 
