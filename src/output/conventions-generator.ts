@@ -71,6 +71,10 @@ export function generateConventions(data: ConventionsData): string {
         lines.push(`- **Method naming:** ${camelPct}% camelCase (sample of ${nonMagic.length})`);
       } else if (snakePct > 0) {
         lines.push(`- **Method naming:** ${snakePct}% snake_case (sample of ${nonMagic.length})`);
+      } else {
+        const pascalCount = nonMagic.filter(n => /^[A-Z][a-zA-Z0-9]*$/.test(n)).length;
+        const pascalPct = pct(pascalCount, nonMagic.length);
+        lines.push(`- **Method naming:** PascalCase dominant — ${pascalPct}% PascalCase, 0% camelCase, 0% snake_case (sample of ${nonMagic.length})`);
       }
     }
   }

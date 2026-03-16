@@ -98,6 +98,15 @@ describe('generateConventions', () => {
     expect(result).toContain('camelCase');
   });
 
+  it('reports PascalCase when no camelCase or snake_case found', () => {
+    const result = generateConventions(makeConventions({
+      methodNames: ['GetData', 'SetName', 'FindAll', 'UpdateRecord', 'DeleteItem'],
+    }));
+    expect(result).toContain('PascalCase dominant');
+    expect(result).toContain('0% camelCase');
+    expect(result).toContain('0% snake_case');
+  });
+
   it('handles zero classes gracefully', () => {
     const result = generateConventions(makeConventions({ totalClasses: 0 }));
     expect(result).toContain('**Classes:** 0');
