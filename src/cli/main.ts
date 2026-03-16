@@ -3,6 +3,7 @@ import { createIndexCommand } from './index.js';
 import { createUsesCommand } from './uses.js';
 import { createImpactCommand } from './impact.js';
 import { createTraceCommand } from './trace.js';
+import { createGenerateCommand } from './generate.js';
 
 const program = new Command();
 
@@ -15,5 +16,6 @@ program.addCommand(createIndexCommand());
 program.addCommand(createUsesCommand());
 program.addCommand(createImpactCommand());
 program.addCommand(createTraceCommand());
+program.addCommand(createGenerateCommand());
 
 program.parse();
