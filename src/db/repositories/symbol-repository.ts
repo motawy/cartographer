@@ -23,7 +23,8 @@ export class SymbolRepository {
   async replaceFileSymbols(
     fileId: number,
     symbols: ParsedSymbol[]
-  ): Promise<void> {
+  ): Promise<Map<string, number>> {
+    const idMap = new Map<string, number>();
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
@@ -33,7 +34,7 @@ export class SymbolRepository {
 
       // Insert new symbols
       for (const symbol of symbols) {
-        await this.insertSymbol(client, fileId, symbol, null);
+        await this.insertSymbol(client, fileId, symbol, null, idMap);
       }
 
       await client.query('COMMIT');
@@ -43,13 +44,15 @@ export class SymbolRepository {
     } finally {
       client.release();
     }
+    return idMap;
   }
 
   private async insertSymbol(
     client: pg.PoolClient,
     fileId: number,
     symbol: ParsedSymbol,
-    parentId: number | null
+    parentId: number | null,
+    idMap: Map<string, number>
   ): Promise<number> {
     const { rows } = await client.query(
       `INSERT INTO symbols
@@ -74,10 +77,13 @@ export class SymbolRepository {
     );
 
     const symbolId = rows[0].id as number;
+    if (symbol.qualifiedName) {
+      idMap.set(symbol.qualifiedName, symbolId);
+    }
 
     // Insert children (methods, properties, constants of a class)
     for (const child of symbol.children) {
-      await this.insertSymbol(client, fileId, child, symbolId);
+      await this.insertSymbol(client, fileId, child, symbolId, idMap);
     }
 
     return symbolId;
