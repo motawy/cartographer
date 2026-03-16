@@ -4,6 +4,7 @@ import { createUsesCommand } from './uses.js';
 import { createImpactCommand } from './impact.js';
 import { createTraceCommand } from './trace.js';
 import { createGenerateCommand } from './generate.js';
+import { createResetCommand } from './reset.js';
 
 const program = new Command();
 
@@ -17,5 +18,6 @@ program.addCommand(createUsesCommand());
 program.addCommand(createImpactCommand());
 program.addCommand(createTraceCommand());
 program.addCommand(createGenerateCommand());
+program.addCommand(createResetCommand());
 
 program.parse();
