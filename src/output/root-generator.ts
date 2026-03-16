@@ -1,19 +1,16 @@
-import type { RepoStats } from './generate-pipeline.js';
+import type { RepoStats, ConventionsData } from './generate-pipeline.js';
 
-const TOKEN_BUDGET_CHARS = 12000; // ~3K tokens at 4 chars/token
+const TOKEN_BUDGET_CHARS = 12000;
 
-export function generateRoot(stats: RepoStats): string {
+export function generateRoot(stats: RepoStats, conventions?: ConventionsData): string {
   const lines: string[] = [];
 
-  // Project Overview
   lines.push(`# Project Overview\n`);
   lines.push(`**Language:** ${capitalize(stats.language)} | **Files:** ${stats.totalFiles.toLocaleString()} | **Symbols:** ${stats.totalSymbols.toLocaleString()} | **References:** ${stats.totalReferences.toLocaleString()}\n`);
 
-  // Architecture
   lines.push(`## Architecture\n`);
-  lines.push(`${detectArchitecture(stats.directories)}\n`);
+  lines.push(`${detectArchitecture(stats.directories, conventions)}\n`);
 
-  // Directory Map
   lines.push(`## Directory Map\n`);
   lines.push('```');
   let shown = 0;
@@ -31,15 +28,12 @@ export function generateRoot(stats: RepoStats): string {
   }
   lines.push('```\n');
 
-  // Context Files
   lines.push(`## Context Files\n`);
   lines.push(`- [Modules](modules.md) — what exists where, grouped by area`);
   lines.push(`- [Dependencies](dependencies.md) — how modules connect (directed graph)`);
   lines.push(`- [Conventions](conventions.md) — coding patterns and style\n`);
 
   let result = lines.join('\n');
-
-  // Enforce token budget
   if (result.length > TOKEN_BUDGET_CHARS) {
     result = result.substring(0, TOKEN_BUDGET_CHARS) + '\n\n... (truncated to fit token budget)\n';
   }
@@ -47,9 +41,16 @@ export function generateRoot(stats: RepoStats): string {
   return result;
 }
 
-function detectArchitecture(dirs: { path: string; classCount: number }[]): string {
+function detectArchitecture(
+  dirs: { path: string; classCount: number }[],
+  conventions?: ConventionsData
+): string {
   const dirNames = new Set(dirs.map(d => d.path.split('/').pop()?.toLowerCase()));
   const patterns: string[] = [];
+
+  const interfaceAdoption = conventions && conventions.totalClasses > 0
+    ? Math.round((conventions.classesWithInterface / conventions.totalClasses) * 100)
+    : null;
 
   if (dirNames.has('controllers') || dirNames.has('http')) {
     patterns.push('HTTP controllers');
@@ -64,7 +65,11 @@ function detectArchitecture(dirs: { path: string; classCount: number }[]): strin
     patterns.push('model layer');
   }
   if (dirNames.has('contracts') || dirNames.has('interfaces')) {
-    patterns.push('interface contracts');
+    if (interfaceAdoption !== null && interfaceAdoption < 5) {
+      patterns.push(`dedicated interfaces directory (adoption low at ${interfaceAdoption}%)`);
+    } else {
+      patterns.push('interface contracts');
+    }
   }
 
   if (patterns.length === 0) {

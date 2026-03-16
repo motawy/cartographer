@@ -109,14 +109,16 @@ export class GeneratePipeline {
     mkdirSync(outputDir, { recursive: true });
 
     const repoStats = await this.queryRepoStats(repo.id);
-    writeFileSync(`${outputDir}/CLAUDE.md`, HEADER + generateRoot(repoStats));
+    const conventions = await this.queryConventions(repo.id);
+
+    writeFileSync(`${outputDir}/CLAUDE.md`, HEADER + generateRoot(repoStats, conventions));
 
     const modules = await this.queryModules(repo.id);
     writeFileSync(`${outputDir}/modules.md`, HEADER + generateModules(modules));
 
     const deps = await this.queryDependencies(repo.id);
     writeFileSync(`${outputDir}/dependencies.md`, HEADER + generateDeps(deps));
-    const conventions = await this.queryConventions(repo.id);
+
     writeFileSync(`${outputDir}/conventions.md`, HEADER + generateConventions(conventions));
 
     // 4. Print summary

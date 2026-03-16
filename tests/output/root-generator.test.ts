@@ -1,6 +1,22 @@
 import { describe, it, expect } from 'vitest';
 import { generateRoot } from '../../src/output/root-generator.js';
-import type { RepoStats } from '../../src/output/generate-pipeline.js';
+import type { RepoStats, ConventionsData } from '../../src/output/generate-pipeline.js';
+
+function makeConventions(overrides: Partial<ConventionsData> = {}): ConventionsData {
+  return {
+    totalClasses: 100,
+    totalInterfaces: 20,
+    totalTraits: 10,
+    totalEnums: 0,
+    classesWithInterface: 45,
+    classesWithInheritance: 60,
+    classesWithTraits: 15,
+    interfaceAdoptionByModule: new Map(),
+    classNames: [],
+    methodNames: [],
+    ...overrides,
+  };
+}
 
 function makeStats(overrides: Partial<RepoStats> = {}): RepoStats {
   return {
@@ -65,5 +81,37 @@ describe('generateRoot', () => {
       ],
     }));
     expect(result).toContain('Architecture pattern could not be determined');
+  });
+
+  it('qualifies interface contracts when adoption is low', () => {
+    const stats = makeStats({
+      directories: [
+        { path: 'objects/Interfaces', fileCount: 50, symbolCount: 168, classCount: 0, dominantKinds: ['interface'] },
+        { path: 'objects/Entity', fileCount: 100, symbolCount: 500, classCount: 500, dominantKinds: ['class'] },
+      ],
+    });
+    const conventions = makeConventions({
+      totalClasses: 15000,
+      classesWithInterface: 39,
+    });
+    const result = generateRoot(stats, conventions);
+    expect(result).toContain('interface');
+    expect(result).toContain('low');
+    expect(result).not.toContain('uses interface contracts');
+  });
+
+  it('confirms interface contracts when adoption is high', () => {
+    const stats = makeStats({
+      directories: [
+        { path: 'app/Contracts', fileCount: 20, symbolCount: 50, classCount: 0, dominantKinds: ['interface'] },
+        { path: 'app/Services', fileCount: 30, symbolCount: 100, classCount: 100, dominantKinds: ['class'] },
+      ],
+    });
+    const conventions = makeConventions({
+      totalClasses: 100,
+      classesWithInterface: 45,
+    });
+    const result = generateRoot(stats, conventions);
+    expect(result).toContain('interface contracts');
   });
 });
