@@ -5,6 +5,7 @@ import { SymbolRepository } from '../db/repositories/symbol-repository.js';
 import { ReferenceRepository } from '../db/repositories/reference-repository.js';
 import type { ToolDeps, RepoStats } from './types.js';
 import { handleFind } from './tools/find.js';
+import { handleSymbol } from './tools/symbol.js';
 
 interface ServerOptions {
   pool: pg.Pool;
@@ -20,6 +21,8 @@ export async function createServer(opts: ServerOptions): Promise<McpServer> {
     symbolRepo,
     refRepo,
   };
+
+  const stats = await computeRepoStats(opts.pool, opts.repoId);
 
   const server = new McpServer({
     name: 'cartograph',
@@ -49,12 +52,12 @@ export async function createServer(opts: ServerOptions): Promise<McpServer> {
     async ({ query, kind, limit }) => wrap(() => handleFind(deps, { query, kind, limit }))
   );
 
-  // --- cartograph_symbol (stub) ---
+  // --- cartograph_symbol ---
   server.tool(
     'cartograph_symbol',
     'Look up a class/interface/function and its relationships',
     { name: z.string().describe('Fully or partially qualified symbol name') },
-    async () => ({ content: [{ type: 'text' as const, text: 'Not yet implemented.' }] })
+    async ({ name }) => wrap(() => handleSymbol(deps, stats, { name }))
   );
 
   // --- cartograph_deps (stub) ---
@@ -102,4 +105,30 @@ export async function createServer(opts: ServerOptions): Promise<McpServer> {
   );
 
   return server;
+}
+
+async function computeRepoStats(pool: pg.Pool, repoId: number): Promise<RepoStats> {
+  const { rows } = await pool.query(
+    `SELECT
+       COUNT(*)::int AS total_classes,
+       COUNT(*) FILTER (WHERE EXISTS (
+         SELECT 1 FROM symbol_references sr WHERE sr.source_symbol_id = s.id AND sr.reference_kind = 'implementation'
+       ))::int AS with_interface,
+       COUNT(*) FILTER (WHERE EXISTS (
+         SELECT 1 FROM symbol_references sr WHERE sr.source_symbol_id = s.id AND sr.reference_kind = 'inheritance'
+       ))::int AS with_base_class,
+       COUNT(*) FILTER (WHERE EXISTS (
+         SELECT 1 FROM symbol_references sr WHERE sr.source_symbol_id = s.id AND sr.reference_kind = 'trait_use'
+       ))::int AS with_traits
+     FROM symbols s
+     JOIN files f ON s.file_id = f.id
+     WHERE f.repo_id = $1 AND s.kind = 'class'`,
+    [repoId]
+  );
+  return {
+    totalClasses: rows[0].total_classes,
+    classesWithInterface: rows[0].with_interface,
+    classesWithBaseClass: rows[0].with_base_class,
+    classesWithTraits: rows[0].with_traits,
+  };
 }
