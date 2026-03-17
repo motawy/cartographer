@@ -1,0 +1,105 @@
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { z } from 'zod';
+import type pg from 'pg';
+import { SymbolRepository } from '../db/repositories/symbol-repository.js';
+import { ReferenceRepository } from '../db/repositories/reference-repository.js';
+import type { ToolDeps, RepoStats } from './types.js';
+import { handleFind } from './tools/find.js';
+
+interface ServerOptions {
+  pool: pg.Pool;
+  repoId: number;
+}
+
+export async function createServer(opts: ServerOptions): Promise<McpServer> {
+  const symbolRepo = new SymbolRepository(opts.pool);
+  const refRepo = new ReferenceRepository(opts.pool);
+
+  const deps: ToolDeps = {
+    repoId: opts.repoId,
+    symbolRepo,
+    refRepo,
+  };
+
+  const server = new McpServer({
+    name: 'cartograph',
+    version: '0.1.0',
+  });
+
+  // Error wrapper — catch DB errors, format as user-facing text, log to stderr.
+  function wrap(fn: () => Promise<string>): Promise<{ content: { type: 'text'; text: string }[] }> {
+    return fn()
+      .then(text => ({ content: [{ type: 'text' as const, text }] }))
+      .catch(err => {
+        console.error('Cartograph tool error:', err);
+        const message = err instanceof Error ? err.message : String(err);
+        return { content: [{ type: 'text' as const, text: `Database error: ${message}` }] };
+      });
+  }
+
+  // --- cartograph_find ---
+  server.tool(
+    'cartograph_find',
+    'Search for symbols across the codebase by name or pattern',
+    {
+      query: z.string().describe('Search term (supports * wildcards)'),
+      kind: z.enum(['class', 'interface', 'trait', 'method', 'function', 'property', 'constant', 'enum']).optional().describe('Filter by symbol kind'),
+      limit: z.number().min(1).max(50).optional().describe('Max results (default 20)'),
+    },
+    async ({ query, kind, limit }) => wrap(() => handleFind(deps, { query, kind, limit }))
+  );
+
+  // --- cartograph_symbol (stub) ---
+  server.tool(
+    'cartograph_symbol',
+    'Look up a class/interface/function and its relationships',
+    { name: z.string().describe('Fully or partially qualified symbol name') },
+    async () => ({ content: [{ type: 'text' as const, text: 'Not yet implemented.' }] })
+  );
+
+  // --- cartograph_deps (stub) ---
+  server.tool(
+    'cartograph_deps',
+    'What does this symbol depend on? (forward dependency graph)',
+    {
+      symbol: z.string().describe('Fully qualified symbol name'),
+      depth: z.number().min(1).max(10).optional().describe('Max traversal depth (default 3)'),
+    },
+    async () => ({ content: [{ type: 'text' as const, text: 'Not yet implemented.' }] })
+  );
+
+  // --- cartograph_dependents (stub) ---
+  server.tool(
+    'cartograph_dependents',
+    'What depends on this symbol? (reverse dependency lookup)',
+    {
+      symbol: z.string().describe('Fully qualified symbol name'),
+      depth: z.number().min(1).max(5).optional().describe('Transitive depth (default 1)'),
+    },
+    async () => ({ content: [{ type: 'text' as const, text: 'Not yet implemented.' }] })
+  );
+
+  // --- cartograph_blast_radius (stub) ---
+  server.tool(
+    'cartograph_blast_radius',
+    'What breaks if this file changes?',
+    {
+      file: z.string().describe('File path relative to repo root'),
+      depth: z.number().min(1).max(5).optional().describe('Transitive impact depth (default 2)'),
+    },
+    async () => ({ content: [{ type: 'text' as const, text: 'Not yet implemented.' }] })
+  );
+
+  // --- cartograph_flow (stub) ---
+  server.tool(
+    'cartograph_flow',
+    'Trace an execution flow end-to-end from an entrypoint',
+    {
+      symbol: z.string().describe('Fully qualified symbol name (entrypoint)'),
+      depth: z.number().min(1).max(15).optional().describe('Max trace depth (default 5)'),
+    },
+    async () => ({ content: [{ type: 'text' as const, text: 'Not yet implemented.' }] })
+  );
+
+  return server;
+}
