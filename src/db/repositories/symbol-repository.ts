@@ -107,6 +107,61 @@ export class SymbolRepository {
     return rows[0].count as number;
   }
 
+  async findByQualifiedName(repoId: number, qualifiedName: string): Promise<SymbolRecord | null> {
+    const { rows } = await this.pool.query(
+      `SELECT s.* FROM symbols s
+       JOIN files f ON s.file_id = f.id
+       WHERE f.repo_id = $1 AND s.qualified_name = $2`,
+      [repoId, qualifiedName]
+    );
+    if (rows.length === 0) return null;
+    return this.toRecord(rows[0]);
+  }
+
+  async findById(id: number): Promise<SymbolRecord | null> {
+    const { rows } = await this.pool.query(
+      'SELECT * FROM symbols WHERE id = $1',
+      [id]
+    );
+    if (rows.length === 0) return null;
+    return this.toRecord(rows[0]);
+  }
+
+  async search(
+    repoId: number,
+    query: string,
+    kind?: string,
+    limit: number = 20
+  ): Promise<(SymbolRecord & { filePath: string })[]> {
+    const params: (string | number)[] = [repoId, query];
+    let sql = `SELECT s.*, f.path AS file_path FROM symbols s
+       JOIN files f ON s.file_id = f.id
+       WHERE f.repo_id = $1 AND s.qualified_name ILIKE $2`;
+    if (kind) {
+      params.push(kind);
+      sql += ` AND s.kind = $${params.length}`;
+    }
+    params.push(limit);
+    sql += ` ORDER BY s.qualified_name LIMIT $${params.length}`;
+
+    const { rows } = await this.pool.query(sql, params);
+    return rows.map((r: Record<string, unknown>) => ({
+      ...this.toRecord(r),
+      filePath: r.file_path as string,
+    }));
+  }
+
+  async findByFilePath(repoId: number, filePath: string): Promise<SymbolRecord[]> {
+    const { rows } = await this.pool.query(
+      `SELECT s.* FROM symbols s
+       JOIN files f ON s.file_id = f.id
+       WHERE f.repo_id = $1 AND f.path = $2
+       ORDER BY s.line_start`,
+      [repoId, filePath]
+    );
+    return rows.map((r: Record<string, unknown>) => this.toRecord(r));
+  }
+
   private toRecord(row: Record<string, unknown>): SymbolRecord {
     return {
       id: row.id as number,
