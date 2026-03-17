@@ -6,6 +6,7 @@ import { ReferenceRepository } from '../db/repositories/reference-repository.js'
 import type { ToolDeps, RepoStats } from './types.js';
 import { handleFind } from './tools/find.js';
 import { handleSymbol } from './tools/symbol.js';
+import { handleDeps } from './tools/deps.js';
 
 interface ServerOptions {
   pool: pg.Pool;
@@ -60,7 +61,7 @@ export async function createServer(opts: ServerOptions): Promise<McpServer> {
     async ({ name }) => wrap(() => handleSymbol(deps, stats, { name }))
   );
 
-  // --- cartograph_deps (stub) ---
+  // --- cartograph_deps ---
   server.tool(
     'cartograph_deps',
     'What does this symbol depend on? (forward dependency graph)',
@@ -68,7 +69,7 @@ export async function createServer(opts: ServerOptions): Promise<McpServer> {
       symbol: z.string().describe('Fully qualified symbol name'),
       depth: z.number().min(1).max(10).optional().describe('Max traversal depth (default 3)'),
     },
-    async () => ({ content: [{ type: 'text' as const, text: 'Not yet implemented.' }] })
+    async ({ symbol, depth }) => wrap(() => handleDeps(deps, { symbol, depth }))
   );
 
   // --- cartograph_dependents (stub) ---
