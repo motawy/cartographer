@@ -316,4 +316,112 @@ describe('ReferenceExtractor', () => {
       expect(inheritance[0].sourceQualifiedName).toBe('App\\Models\\User');
     });
   });
+
+  describe('class references (::class)', () => {
+    it('extracts ::class as class_reference', () => {
+      const refs = parseAndExtract(`<?php
+        namespace App\\Routes;
+        use App\\Controllers\\UserController;
+        class UserRoute {
+          public function getControllerName(): string {
+            return UserController::class;
+          }
+        }
+      `);
+
+      const classRefs = refs.filter(r => r.kind === 'class_reference');
+      expect(classRefs).toHaveLength(1);
+      expect(classRefs[0].sourceQualifiedName).toBe('App\\Routes\\UserRoute::getControllerName');
+      expect(classRefs[0].targetQualifiedName).toBe('app\\controllers\\usercontroller');
+      expect(classRefs[0].line).toBeGreaterThan(0);
+    });
+
+    it('resolves ::class through namespace imports', () => {
+      const refs = parseAndExtract(`<?php
+        namespace App\\Routes;
+        use App\\Builders\\CostCenters\\RecurringJobCostCenters as CostCenterBuilder;
+        class SomeRoute {
+          public function getBuilderName(): string {
+            return CostCenterBuilder::class;
+          }
+        }
+      `);
+
+      const classRefs = refs.filter(r => r.kind === 'class_reference');
+      expect(classRefs).toHaveLength(1);
+      expect(classRefs[0].targetQualifiedName).toBe('app\\builders\\costcenters\\recurringjobcostcenters');
+    });
+
+    it('handles qualified ::class without import', () => {
+      const refs = parseAndExtract(`<?php
+        namespace App\\Routes;
+        class SomeRoute {
+          public function getModelName(): string {
+            return \\App\\Models\\User::class;
+          }
+        }
+      `);
+
+      const classRefs = refs.filter(r => r.kind === 'class_reference');
+      expect(classRefs).toHaveLength(1);
+      expect(classRefs[0].targetQualifiedName).toBe('app\\models\\user');
+    });
+
+    it('does not extract self::class or static::class', () => {
+      const refs = parseAndExtract(`<?php
+        namespace App\\Services;
+        class UserService {
+          public function getClassName(): string {
+            return self::class;
+          }
+          public function getStaticName(): string {
+            return static::class;
+          }
+        }
+      `);
+
+      const classRefs = refs.filter(r => r.kind === 'class_reference');
+      expect(classRefs).toHaveLength(0);
+    });
+
+    it('does not treat regular constants as class_reference', () => {
+      const refs = parseAndExtract(`<?php
+        namespace App\\Services;
+        use App\\Models\\User;
+        class UserService {
+          public function getStatus(): string {
+            return User::STATUS_ACTIVE;
+          }
+        }
+      `);
+
+      const classRefs = refs.filter(r => r.kind === 'class_reference');
+      expect(classRefs).toHaveLength(0);
+      // Should still be captured as static_access
+      const staticAccess = refs.filter(r => r.kind === 'static_access');
+      expect(staticAccess).toHaveLength(1);
+    });
+
+    it('extracts multiple ::class references in one method', () => {
+      const refs = parseAndExtract(`<?php
+        namespace App\\Routes;
+        use App\\Controllers\\UserController;
+        use App\\Builders\\UserBuilder;
+        class UserRoute {
+          public function setup(): void {
+            $this->controller = UserController::class;
+            $this->builder = UserBuilder::class;
+          }
+        }
+      `);
+
+      const classRefs = refs.filter(r => r.kind === 'class_reference');
+      expect(classRefs).toHaveLength(2);
+      const targets = classRefs.map(r => r.targetQualifiedName).sort();
+      expect(targets).toEqual([
+        'app\\builders\\userbuilder',
+        'app\\controllers\\usercontroller',
+      ]);
+    });
+  });
 });

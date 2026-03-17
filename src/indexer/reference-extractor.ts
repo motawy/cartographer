@@ -293,19 +293,29 @@ function walkForReferences(
     }
   }
 
-  // ClassName::CONST — class_constant_access_expression
+  // ClassName::CONST or ClassName::class — class_constant_access_expression
   if (node.type === 'class_constant_access_expression') {
     const scopeNode = node.child(0);
     const memberNode = findNameAfterOperator(node, '::');
     if (scopeNode && memberNode) {
       const className = extractNameFromNode(scopeNode);
       if (className && !isSelfReference(className)) {
-        refs.push({
-          sourceQualifiedName: sourceQN,
-          targetQualifiedName: `${resolveTypeName(className, context)}::${memberNode.text.toLowerCase()}`,
-          kind: 'static_access',
-          line: node.startPosition.row + 1,
-        });
+        if (memberNode.text === 'class') {
+          // Foo::class — reference to the class itself, not a constant
+          refs.push({
+            sourceQualifiedName: sourceQN,
+            targetQualifiedName: resolveTypeName(className, context),
+            kind: 'class_reference',
+            line: node.startPosition.row + 1,
+          });
+        } else {
+          refs.push({
+            sourceQualifiedName: sourceQN,
+            targetQualifiedName: `${resolveTypeName(className, context)}::${memberNode.text.toLowerCase()}`,
+            kind: 'static_access',
+            line: node.startPosition.row + 1,
+          });
+        }
       }
     }
   }
@@ -367,9 +377,12 @@ function extractTypeName(node: SyntaxNode): string | null {
 
 function extractQualifiedNameText(node: SyntaxNode): string {
   const parts: string[] = [];
+  let leadingBackslash = false;
   for (let i = 0; i < node.childCount; i++) {
     const child = node.child(i)!;
-    if (child.type === 'namespace_name') {
+    if (child.text === '\\' && i === 0) {
+      leadingBackslash = true;
+    } else if (child.type === 'namespace_name') {
       const subParts: string[] = [];
       for (let j = 0; j < child.childCount; j++) {
         if (child.child(j)!.type === 'name') subParts.push(child.child(j)!.text);
@@ -379,7 +392,8 @@ function extractQualifiedNameText(node: SyntaxNode): string {
       parts.push(child.text);
     }
   }
-  return parts.join('\\');
+  const joined = parts.join('\\');
+  return leadingBackslash ? `\\${joined}` : joined;
 }
 
 function findChild(node: SyntaxNode, type: string): SyntaxNode | null {
