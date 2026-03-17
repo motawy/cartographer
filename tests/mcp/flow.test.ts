@@ -41,16 +41,20 @@ describe('cartograph_flow', () => {
       docblock: null, children: [], metadata: {},
     });
 
+    const f5 = await fileRepo.upsert(repo.id, 'e.php', 'php', 'h5', 10);
+
     const ids1 = await symbolRepo.replaceFileSymbols(f1.id, [mkClass('A', 'Ns\\A')]);
     const ids2 = await symbolRepo.replaceFileSymbols(f2.id, [mkClass('B', 'Ns\\B')]);
     await symbolRepo.replaceFileSymbols(f3.id, [mkClass('C', 'Ns\\C')]);
     await symbolRepo.replaceFileSymbols(f4.id, [mkClass('Base', 'Ns\\Base')]);
+    await symbolRepo.replaceFileSymbols(f5.id, [mkClass('E', 'Ns\\E')]);
 
     // A instantiates B (call), A inherits Base (structural — should be excluded)
-    // B instantiates C (call)
+    // B instantiates C (call), A references E via ::class (class_reference)
     await refRepo.replaceFileReferences(f1.id, ids1, [
       { sourceQualifiedName: 'Ns\\A', targetQualifiedName: 'ns\\b', kind: 'instantiation', line: 5 },
       { sourceQualifiedName: 'Ns\\A', targetQualifiedName: 'ns\\base', kind: 'inheritance', line: 1 },
+      { sourceQualifiedName: 'Ns\\A', targetQualifiedName: 'ns\\e', kind: 'class_reference', line: 6 },
     ]);
     await refRepo.replaceFileReferences(f2.id, ids2, [
       { sourceQualifiedName: 'Ns\\B', targetQualifiedName: 'ns\\c', kind: 'static_call', line: 3 },
@@ -81,5 +85,10 @@ describe('cartograph_flow', () => {
   it('returns not-found for unknown symbol', async () => {
     const result = await handleFlow(deps, { symbol: 'Ns\\Z' });
     expect(result).toContain('not found');
+  });
+
+  it('follows class_reference edges', async () => {
+    const result = await handleFlow(deps, { symbol: 'Ns\\A', depth: 5 });
+    expect(result).toContain('Ns\\E');
   });
 });

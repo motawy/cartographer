@@ -1,6 +1,6 @@
 import type { ToolDeps } from '../types.js';
 
-const CALL_KINDS = new Set(['static_call', 'self_call', 'instantiation']);
+const CALL_KINDS = new Set(['static_call', 'self_call', 'instantiation', 'class_reference']);
 
 interface FlowParams {
   symbol: string;
