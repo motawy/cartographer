@@ -131,7 +131,8 @@ export class SymbolRepository {
     repoId: number,
     query: string,
     kind?: string,
-    limit: number = 20
+    limit: number = 20,
+    path?: string
   ): Promise<(SymbolRecord & { filePath: string })[]> {
     const params: (string | number)[] = [repoId, query];
     let sql = `SELECT s.*, f.path AS file_path FROM symbols s
@@ -140,6 +141,10 @@ export class SymbolRepository {
     if (kind) {
       params.push(kind);
       sql += ` AND s.kind = $${params.length}`;
+    }
+    if (path) {
+      params.push(`${path}%`);
+      sql += ` AND f.path LIKE $${params.length}`;
     }
     params.push(limit);
     sql += ` ORDER BY s.qualified_name LIMIT $${params.length}`;

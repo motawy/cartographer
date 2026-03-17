@@ -161,6 +161,17 @@ describe('SymbolRepository query methods', () => {
       const results = await symbolRepo.search(other.id, '%UserService%');
       expect(results).toHaveLength(0);
     });
+
+    it('filters by file path prefix', async () => {
+      const results = await symbolRepo.search(repoId, '%', undefined, 20, 'app/Services');
+      expect(results.every(r => r.filePath.startsWith('app/Services'))).toBe(true);
+      expect(results.some(r => r.name === 'UserService')).toBe(true);
+    });
+
+    it('path filter returns empty for non-matching path', async () => {
+      const results = await symbolRepo.search(repoId, '%UserService%', undefined, 20, 'app/Controllers');
+      expect(results).toHaveLength(0);
+    });
   });
 
   describe('findByFilePath', () => {
