@@ -5,6 +5,7 @@ import { createImpactCommand } from './impact.js';
 import { createTraceCommand } from './trace.js';
 import { createGenerateCommand } from './generate.js';
 import { createResetCommand } from './reset.js';
+import { createServeCommand } from './serve.js';
 
 const program = new Command();
 
@@ -19,5 +20,6 @@ program.addCommand(createImpactCommand());
 program.addCommand(createTraceCommand());
 program.addCommand(createGenerateCommand());
 program.addCommand(createResetCommand());
+program.addCommand(createServeCommand());
 
 program.parse();
