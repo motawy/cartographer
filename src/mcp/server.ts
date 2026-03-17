@@ -7,6 +7,7 @@ import type { ToolDeps, RepoStats } from './types.js';
 import { handleFind } from './tools/find.js';
 import { handleSymbol } from './tools/symbol.js';
 import { handleDeps } from './tools/deps.js';
+import { handleFlow } from './tools/flow.js';
 
 interface ServerOptions {
   pool: pg.Pool;
@@ -94,7 +95,7 @@ export async function createServer(opts: ServerOptions): Promise<McpServer> {
     async () => ({ content: [{ type: 'text' as const, text: 'Not yet implemented.' }] })
   );
 
-  // --- cartograph_flow (stub) ---
+  // --- cartograph_flow ---
   server.tool(
     'cartograph_flow',
     'Trace an execution flow end-to-end from an entrypoint',
@@ -102,7 +103,7 @@ export async function createServer(opts: ServerOptions): Promise<McpServer> {
       symbol: z.string().describe('Fully qualified symbol name (entrypoint)'),
       depth: z.number().min(1).max(15).optional().describe('Max trace depth (default 5)'),
     },
-    async () => ({ content: [{ type: 'text' as const, text: 'Not yet implemented.' }] })
+    async ({ symbol, depth }) => wrap(() => handleFlow(deps, { symbol, depth }))
   );
 
   return server;
