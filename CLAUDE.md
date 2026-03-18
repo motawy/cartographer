@@ -6,10 +6,8 @@ CLI tool that compiles codebase intelligence into AI-consumable context. Indexes
 ## Tech stack
 - TypeScript, Node.js
 - Tree-sitter for AST parsing (PHP first, then TS/Python/Go)
-- PostgreSQL 16 + pgvector for storage + vector search
-- Redis + BullMQ for incremental indexing jobs
-- Docker Compose for local infra
-- Voyage AI `voyage-code-3` for code embeddings (optional, for similarity queries)
+- SQLite via better-sqlite3 (zero-config, single file at `~/.cartograph/cartograph.db`)
+- No external services required — no Docker, no Redis, no Postgres
 
 ## Project structure
 ```
@@ -51,15 +49,19 @@ cartograph query flow <entrypoint>            # Trace an execution flow end-to-e
 - Config from `.cartograph.yml` in repo root + env vars for secrets.
 
 ## Database
+- SQLite via better-sqlite3. Synchronous API — no async/await on DB calls.
+- DB file: `~/.cartograph/cartograph.db` (configurable via `CARTOGRAPH_DB_PATH`)
 - Migrations in `src/db/migrations/`, numbered sequentially.
-- Key tables: `files`, `symbols`, `symbol_references`, `code_embeddings`, `project_profiles`
-- pgvector HNSW index for embeddings. Cosine distance.
+- Key tables: `repos`, `files`, `symbols`, `symbol_references`
+- PRAGMAs: WAL mode, foreign keys ON, busy timeout 5000ms
+- Tests use in-memory SQLite (`:memory:`) — no external DB needed
 - PHP qualified names use `\\`: `App\\Services\\UserService::findById`
+- Symbol search uses `COLLATE NOCASE` for case-insensitive matching
 
 ## Testing
 - Unit tests use fixtures in `tests/fixtures/` (mini Laravel project)
-- Integration tests use real Postgres via Docker
-- No DB mocking — use test database with transaction rollback
+- All DB tests use in-memory SQLite — no Docker or external DB needed
+- `tests/setup.ts` exports `createTestDb()` for fresh in-memory DB with migrations
 - Mock external APIs (embedding, LLM) in unit tests
 - Output generators tested by snapshot comparison (expected output vs actual)
 
@@ -67,7 +69,7 @@ cartograph query flow <entrypoint>            # Trace an execution flow end-to-e
 - RAG not fine-tuning — index + retrieve, never train on codebases
 - Symbol-level granularity — functions/methods/classes are the units
 - Incremental indexing via file content hashing
-- pgvector over standalone vector DB — one fewer service
+- SQLite over PostgreSQL — zero-config, single file, no Docker needed
 - CLI-first, outputs consumed by other AI tools
 - MCP server is read-only — it queries the index, never modifies code
 
@@ -88,6 +90,6 @@ cartograph query flow <entrypoint>            # Trace an execution flow end-to-e
 - Dynamic calls (`$this->$method()`) — mark unresolvable, don't try to resolve
 
 ## Phase boundaries
-- **Phase 1 (current):** Index + static file generation. CLI outputs CLAUDE.md tree.
-- **Phase 2:** MCP server for dynamic queries.
+- **Phase 1:** Index + static file generation. CLI outputs CLAUDE.md tree. ✅
+- **Phase 2:** MCP server for dynamic queries. ✅
 - **Phase 3:** Watch mode (re-index on file change) + CI integration.

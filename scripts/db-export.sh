@@ -3,20 +3,26 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-DB_NAME="${1:-cartograph}"
+DB_PATH="${1:-$HOME/.cartograph/cartograph.db}"
 OUTPUT="${2:-cartograph-export.sql}"
 
-echo "==> Exporting tables from ${DB_NAME} to ${OUTPUT}..."
+if [ ! -f "$DB_PATH" ]; then
+  echo "Error: database not found at ${DB_PATH}"
+  exit 1
+fi
 
-docker compose exec -T postgres pg_dump \
-  -U cartograph \
-  -d "$DB_NAME" \
-  --data-only \
-  --table=repos \
-  --table=files \
-  --table=symbols \
-  --table=symbol_references \
-  > "$OUTPUT"
+echo "==> Exporting tables from ${DB_PATH} to ${OUTPUT}..."
+
+sqlite3 "$DB_PATH" <<SQL > "$OUTPUT"
+.mode insert repos
+SELECT * FROM repos;
+.mode insert files
+SELECT * FROM files;
+.mode insert symbols
+SELECT * FROM symbols;
+.mode insert symbol_references
+SELECT * FROM symbol_references;
+SQL
 
 # Quick stats
 LINES=$(wc -l < "$OUTPUT")
@@ -25,12 +31,9 @@ SIZE=$(du -h "$OUTPUT" | cut -f1)
 echo "==> Exported ${OUTPUT} (${SIZE}, ${LINES} lines)"
 echo ""
 echo "Tables exported:"
-docker compose exec -T postgres psql -U cartograph -d "$DB_NAME" -t -A -c "
-  SELECT 'repos: ' || COUNT(*) FROM repos
-  UNION ALL
-  SELECT 'files: ' || COUNT(*) FROM files
-  UNION ALL
-  SELECT 'symbols: ' || COUNT(*) FROM symbols
-  UNION ALL
-  SELECT 'symbol_references: ' || COUNT(*) FROM symbol_references
+sqlite3 "$DB_PATH" "
+  SELECT 'repos: ' || COUNT(*) FROM repos;
+  SELECT 'files: ' || COUNT(*) FROM files;
+  SELECT 'symbols: ' || COUNT(*) FROM symbols;
+  SELECT 'symbol_references: ' || COUNT(*) FROM symbol_references;
 "
