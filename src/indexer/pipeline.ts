@@ -1,4 +1,4 @@
-import type pg from 'pg';
+import type Database from 'better-sqlite3';
 import type { CartographConfig, DiscoveredFile } from '../types.js';
 import { discoverFiles } from './file-walker.js';
 import { AstParser } from './ast-parser.js';
@@ -22,18 +22,18 @@ export class IndexPipeline {
   private symbolRepo: SymbolRepository;
   private referenceRepo: ReferenceRepository;
 
-  constructor(pool: pg.Pool) {
-    this.repoRepo = new RepoRepository(pool);
-    this.fileRepo = new FileRepository(pool);
-    this.symbolRepo = new SymbolRepository(pool);
-    this.referenceRepo = new ReferenceRepository(pool);
+  constructor(db: Database.Database) {
+    this.repoRepo = new RepoRepository(db);
+    this.fileRepo = new FileRepository(db);
+    this.symbolRepo = new SymbolRepository(db);
+    this.referenceRepo = new ReferenceRepository(db);
   }
 
-  async run(
+  run(
     repoPath: string,
     config: CartographConfig,
     opts: PipelineOptions = {}
-  ): Promise<void> {
+  ): void {
     const log = this.createLogger(opts);
     const absPath = resolve(repoPath);
     const runStart = Date.now();
@@ -41,11 +41,11 @@ export class IndexPipeline {
     log(`Indexing ${absPath}...`);
 
     // 1. Register repo
-    const repo = await this.repoRepo.findOrCreate(absPath, basename(absPath));
+    const repo = this.repoRepo.findOrCreate(absPath, basename(absPath));
 
     // 2. Discover files
     const discoverStart = Date.now();
-    const discovered = await discoverFiles(absPath, config);
+    const discovered = discoverFiles(absPath, config);
     log(`Found ${discovered.length} source files (${this.elapsed(discoverStart)})`);
 
     if (discovered.length === 0) {
@@ -56,7 +56,7 @@ export class IndexPipeline {
     }
 
     // 3. Compute changeset
-    const storedHashes = await this.fileRepo.getFileHashes(repo.id);
+    const storedHashes = this.fileRepo.getFileHashes(repo.id);
     const changeset = this.computeChangeset(discovered, storedHashes);
     log(
       `Changes: ${changeset.added.length} new, ${changeset.modified.length} modified, ${changeset.deleted.length} deleted`
@@ -64,7 +64,7 @@ export class IndexPipeline {
 
     // 4. Remove deleted files (CASCADE deletes their symbols)
     if (changeset.deleted.length > 0) {
-      await this.fileRepo.deleteByPaths(repo.id, changeset.deleted);
+      this.fileRepo.deleteByPaths(repo.id, changeset.deleted);
       if (opts.verbose) {
         for (const path of changeset.deleted) {
           log(`  deleted: ${path}`);
@@ -84,19 +84,19 @@ export class IndexPipeline {
       try {
         const fileStart = Date.now();
         const { symbols, linesOfCode, tree, context } = parser.parse(file);
-        const fileRecord = await this.fileRepo.upsert(
+        const fileRecord = this.fileRepo.upsert(
           repo.id,
           file.relativePath,
           file.language,
           file.hash,
           linesOfCode
         );
-        const symbolIdMap = await this.symbolRepo.replaceFileSymbols(fileRecord.id, symbols);
+        const symbolIdMap = this.symbolRepo.replaceFileSymbols(fileRecord.id, symbols);
 
         // Extract and store references (best-effort)
         try {
           const references = extractReferences(tree, context, symbols);
-          await this.referenceRepo.replaceFileReferences(fileRecord.id, symbolIdMap, references);
+          this.referenceRepo.replaceFileReferences(fileRecord.id, symbolIdMap, references);
         } catch (refErr) {
           if (opts.verbose) {
             log(`  Warning: reference extraction failed for ${file.relativePath}: ${refErr}`);
@@ -117,15 +117,15 @@ export class IndexPipeline {
     log(`Parsing complete (${this.elapsed(parseStart)})`);
 
     // 6. Cross-file reference resolution
-    const resolution = await this.referenceRepo.resolveTargets(repo.id);
+    const resolution = this.referenceRepo.resolveTargets(repo.id);
     log(`References: ${resolution.resolved} resolved, ${resolution.unresolved} unresolved`);
 
     // 7. Update repo timestamp
-    await this.repoRepo.updateLastIndexed(repo.id);
+    this.repoRepo.updateLastIndexed(repo.id);
 
     // 8. Report
-    const totalSymbols = await this.symbolRepo.countByRepo(repo.id);
-    const totalRefs = await this.referenceRepo.countByRepo(repo.id);
+    const totalSymbols = this.symbolRepo.countByRepo(repo.id);
+    const totalRefs = this.referenceRepo.countByRepo(repo.id);
     log(
       `Done. Processed ${toProcess.length - errors} files (${errors} errors). ` +
       `${totalSymbols} symbols, ${totalRefs} references indexed. Total time: ${this.elapsed(runStart)}`

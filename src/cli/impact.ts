@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import { loadConfig } from '../config.js';
-import { createPool } from '../db/connection.js';
+import { openDatabase } from '../db/connection.js';
 import { ReferenceRepository } from '../db/repositories/reference-repository.js';
 
 export function createImpactCommand(): Command {
@@ -9,18 +9,17 @@ export function createImpactCommand(): Command {
     .argument('<file>', 'File path relative to repo root')
     .option('--depth <n>', 'Depth of transitive impact (default: 3)', '3')
     .option('--repo-path <path>', 'Repository path (for config loading)', '.')
-    .action(async (file: string, opts: { depth: string; repoPath: string }) => {
+    .action((file: string, opts: { depth: string; repoPath: string }) => {
       const config = loadConfig(opts.repoPath);
-      const pool = createPool(config.database);
+      const db = openDatabase(config.database);
 
       try {
-        const { rows: fileSymbols } = await pool.query(
+        const fileSymbols = db.prepare(
           `SELECT s.id, s.qualified_name, s.kind
            FROM symbols s
            JOIN files f ON s.file_id = f.id
-           WHERE f.path = $1`,
-          [file]
-        );
+           WHERE f.path = ?`
+        ).all(file) as { id: number; qualified_name: string; kind: string }[];
 
         if (fileSymbols.length === 0) {
           console.error(`No symbols found in file: ${file}`);
@@ -28,13 +27,13 @@ export function createImpactCommand(): Command {
           process.exit(1);
         }
 
-        const refRepo = new ReferenceRepository(pool);
+        const refRepo = new ReferenceRepository(db);
         const depth = parseInt(opts.depth, 10);
 
         const allDependents = new Map<string, { qualifiedName: string; filePath: string; kind: string }>();
 
         for (const sym of fileSymbols) {
-          const deps = await refRepo.findDependents(sym.id, depth);
+          const deps = refRepo.findDependents(sym.id, depth);
           for (const dep of deps) {
             const sourceQN = dep.source_qualified_name as string;
             const filePath = dep.source_file_path as string;
@@ -68,11 +67,11 @@ export function createImpactCommand(): Command {
         for (const [filePath, symbols] of byFile) {
           console.log(`  ${filePath}`);
           for (const sym of symbols) {
-            console.log(`    → ${sym}`);
+            console.log(`    \u2192 ${sym}`);
           }
         }
       } finally {
-        await pool.end();
+        db.close();
       }
     });
 }

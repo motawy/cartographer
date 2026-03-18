@@ -1,4 +1,4 @@
-import { readFile } from 'fs/promises';
+import { readFileSync } from 'fs';
 import { join } from 'path';
 import type { ToolDeps } from '../types.js';
 import type { SymbolRecord } from '../../db/repositories/symbol-repository.js';
@@ -11,26 +11,26 @@ interface CompareParams {
 
 const MAX_INLINE_LINES = 5; // Only inline methods this short or shorter
 
-export async function handleCompare(deps: ToolDeps, params: CompareParams): Promise<string> {
+export function handleCompare(deps: ToolDeps, params: CompareParams): string {
   const { repoId, repoPath, symbolRepo, refRepo } = deps;
 
-  const symA = await resolveSymbol(repoId, params.symbolA, symbolRepo);
+  const symA = resolveSymbol(repoId, params.symbolA, symbolRepo);
   if (!symA) {
     return `Symbol A not found: "${params.symbolA}". Use cartograph_find to search.`;
   }
 
-  const symB = await resolveSymbol(repoId, params.symbolB, symbolRepo);
+  const symB = resolveSymbol(repoId, params.symbolB, symbolRepo);
   if (!symB) {
     return `Symbol B not found: "${params.symbolB}". Use cartograph_find to search.`;
   }
 
-  const childrenA = await symbolRepo.findChildren(symA.id);
-  const childrenB = await symbolRepo.findChildren(symB.id);
+  const childrenA = symbolRepo.findChildren(symA.id);
+  const childrenB = symbolRepo.findChildren(symB.id);
 
   // Load references for all children to show what they wire to
   const refsMap = new Map<number, ReferenceRecord[]>();
   for (const child of [...childrenA, ...childrenB]) {
-    const refs = await refRepo.findDependencies(child.id);
+    const refs = refRepo.findDependencies(child.id);
     if (refs.length > 0) {
       refsMap.set(child.id, refs);
     }
@@ -48,7 +48,7 @@ export async function handleCompare(deps: ToolDeps, params: CompareParams): Prom
   if (repoPath) {
     // Load bodies for all children — delta methods get inlined,
     // shared methods get diffed to flag behavioral differences
-    await loadMethodBodies([...childrenA, ...childrenB], repoPath, symbolRepo, bodyMap);
+    loadMethodBodies([...childrenA, ...childrenB], repoPath, symbolRepo, bodyMap);
   }
 
   const lines: string[] = [];
@@ -93,21 +93,19 @@ export async function handleCompare(deps: ToolDeps, params: CompareParams): Prom
 
     if (wiringDiffers || bodyDiffers) {
       // Show the difference
-      let line = `- **${c.name}()** ⚠ differs`;
+      let line = `- **${c.name}()** \u26a0 differs`;
       if (wiringDiffers) {
-        line += `\n  A: → ${refHintA || '(none)'}\n  B: → ${refHintB || '(none)'}`;
+        line += `\n  A: \u2192 ${refHintA || '(none)'}\n  B: \u2192 ${refHintB || '(none)'}`;
       }
       if (bodyDiffers) {
         line += `\n  A (line ${c.lineStart}):\n  \`\`\`\n  ${bodyA}\n  \`\`\``;
         line += `\n  B (line ${bChild.lineStart}):\n  \`\`\`\n  ${bodyB}\n  \`\`\``;
-      } else if (wiringDiffers && !bodyA && !bodyB) {
-        // No bodies available but wiring differs — already shown above
       }
       sharedDifferent.push(line);
     } else {
       // Identical or no info to compare
       if (refHintA) {
-        sharedIdentical.push(`- ${c.name}() → ${refHintA}`);
+        sharedIdentical.push(`- ${c.name}() \u2192 ${refHintA}`);
       } else {
         sharedIdentical.push(`- ${c.name}()`);
       }
@@ -115,13 +113,13 @@ export async function handleCompare(deps: ToolDeps, params: CompareParams): Prom
   }
 
   if (sharedDifferent.length > 0) {
-    lines.push(`### Shared — different implementations (${sharedDifferent.length}):`);
+    lines.push(`### Shared \u2014 different implementations (${sharedDifferent.length}):`);
     lines.push(...sharedDifferent);
     lines.push('');
   }
 
   if (sharedIdentical.length > 0) {
-    lines.push(`### Shared — identical (${sharedIdentical.length}):`);
+    lines.push(`### Shared \u2014 identical (${sharedIdentical.length}):`);
     lines.push(...sharedIdentical);
   } else if (sharedDifferent.length === 0 && shared.length > 0) {
     lines.push(`### Shared (${shared.length}):`);
@@ -134,12 +132,12 @@ export async function handleCompare(deps: ToolDeps, params: CompareParams): Prom
 function formatChild(c: SymbolRecord, refs?: ReferenceRecord[], body?: string): string {
   const vis = c.visibility ? `${c.visibility} ` : '';
   const refHint = formatRefHint(refs);
-  const refSuffix = refHint ? ` → ${refHint}` : '';
+  const refSuffix = refHint ? ` \u2192 ${refHint}` : '';
   // Prefer inline body over signature for short methods
   if (body) {
     return `- ${vis}${c.name}()${refSuffix} (line ${c.lineStart})\n  \`\`\`\n  ${body}\n  \`\`\``;
   }
-  const sig = c.signature ? ` → ${c.signature}` : '';
+  const sig = c.signature ? ` \u2192 ${c.signature}` : '';
   return `- ${vis}${c.name}${sig}${refSuffix} (line ${c.lineStart})`;
 }
 
@@ -153,12 +151,12 @@ function formatRefHint(refs?: ReferenceRecord[]): string | null {
   return null;
 }
 
-async function loadMethodBodies(
+function loadMethodBodies(
   symbols: SymbolRecord[],
   repoPath: string,
   symbolRepo: ToolDeps['symbolRepo'],
   bodyMap: Map<number, string>
-): Promise<void> {
+): void {
   // Group short methods by fileId to minimize file reads
   const shortMethods = symbols.filter(s => s.lineEnd - s.lineStart <= MAX_INLINE_LINES);
   if (shortMethods.length === 0) return;
@@ -171,12 +169,12 @@ async function loadMethodBodies(
   }
 
   for (const [fileId, methods] of byFile) {
-    const filePath = await symbolRepo.getFilePath(fileId);
+    const filePath = symbolRepo.getFilePath(fileId);
     if (!filePath) continue;
 
     try {
       const fullPath = join(repoPath, filePath);
-      const content = await readFile(fullPath, 'utf-8');
+      const content = readFileSync(fullPath, 'utf-8');
       const fileLines = content.split('\n');
 
       for (const method of methods) {
@@ -194,17 +192,17 @@ async function loadMethodBodies(
   }
 }
 
-async function resolveSymbol(
+function resolveSymbol(
   repoId: number,
   name: string,
   symbolRepo: ToolDeps['symbolRepo']
-): Promise<SymbolRecord | null> {
+): SymbolRecord | null {
   // Try exact match first
-  const exact = await symbolRepo.findByQualifiedName(repoId, name);
+  const exact = symbolRepo.findByQualifiedName(repoId, name);
   if (exact) return exact;
 
   // Suffix fallback
   const escapedName = name.replace(/\\/g, '\\\\');
-  const results = await symbolRepo.search(repoId, `%${escapedName}`, undefined, 1);
+  const results = symbolRepo.search(repoId, `%${escapedName}`, undefined, 1);
   return results.length > 0 ? results[0] : null;
 }

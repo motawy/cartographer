@@ -5,16 +5,16 @@ interface DependentsParams {
   depth?: number;
 }
 
-export async function handleDependents(deps: ToolDeps, params: DependentsParams): Promise<string> {
+export function handleDependents(deps: ToolDeps, params: DependentsParams): string {
   const { repoId, symbolRepo, refRepo } = deps;
   const depth = Math.max(1, Math.min(params.depth ?? 1, 5));
 
-  const symbol = await symbolRepo.findByQualifiedName(repoId, params.symbol);
+  const symbol = symbolRepo.findByQualifiedName(repoId, params.symbol);
   if (!symbol) {
     return `Symbol not found: "${params.symbol}". Use cartograph_find to search.`;
   }
 
-  const results = (await refRepo.findDependents(symbol.id, depth)) as unknown as DependentRow[];
+  const results = refRepo.findDependents(symbol.id, depth) as unknown as DependentRow[];
 
   if (results.length === 0) {
     return `No dependents found for ${symbol.qualifiedName}.`;

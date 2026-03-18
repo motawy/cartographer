@@ -14,10 +14,10 @@ const LANGUAGE_EXTENSIONS: Record<string, string> = {
   '.go': 'go',
 };
 
-export async function discoverFiles(
+export function discoverFiles(
   repoPath: string,
   config: CartographConfig
-): Promise<DiscoveredFile[]> {
+): DiscoveredFile[] {
   const allowedExtensions = new Set(
     Object.entries(LANGUAGE_EXTENSIONS)
       .filter(([, lang]) => config.languages.includes(lang))
@@ -33,7 +33,7 @@ export async function discoverFiles(
     );
     filePaths = output.trim().split('\n').filter(Boolean);
   } catch {
-    filePaths = await fg('**/*', {
+    filePaths = fg.sync('**/*', {
       cwd: repoPath,
       ignore: config.exclude,
       dot: false,

@@ -8,11 +8,11 @@ interface FlowParams {
   depth?: number;
 }
 
-export async function handleFlow(deps: ToolDeps, params: FlowParams): Promise<string> {
+export function handleFlow(deps: ToolDeps, params: FlowParams): string {
   const { repoId, symbolRepo, refRepo } = deps;
   const maxDepth = Math.max(1, Math.min(params.depth ?? 5, 15));
 
-  const startSymbol = await symbolRepo.findByQualifiedName(repoId, params.symbol);
+  const startSymbol = symbolRepo.findByQualifiedName(repoId, params.symbol);
   if (!startSymbol) {
     return `Symbol not found: "${params.symbol}". Use cartograph_find to search.`;
   }
@@ -41,19 +41,19 @@ export async function handleFlow(deps: ToolDeps, params: FlowParams): Promise<st
     const indent = '  '.repeat(current.depth);
     const prefix = current.depth === 0
       ? `${current.depth + 1}.`
-      : `${current.depth + 1}. →`;
+      : `${current.depth + 1}. \u2192`;
     const viaLabel = current.via ? `  (${current.via})` : '';
     lines.push(`${indent}${prefix} ${current.qualifiedName}${viaLabel}`);
     maxReached = Math.max(maxReached, current.depth);
 
     // Get direct refs (includes children's refs via findDependencies)
-    let refs = await refRepo.findDependencies(current.symbolId);
+    let refs = refRepo.findDependencies(current.symbolId);
 
     // For classes: also include parent class's template methods' refs
     // This traces through the template method pattern:
     //   BaseRoute::getControllerInstance calls $this->getControllerName()
     //   Child overrides getControllerName() → return Controller::class
-    const parentRefs = await getParentMethodRefs(current.symbolId, symbolRepo, refRepo);
+    const parentRefs = getParentMethodRefs(current.symbolId, symbolRepo, refRepo);
     if (parentRefs.length > 0) {
       refs = [...refs, ...parentRefs];
     }
@@ -62,7 +62,7 @@ export async function handleFlow(deps: ToolDeps, params: FlowParams): Promise<st
 
     // Resolve self_calls: if a parent's self_call targets ParentClass::method,
     // and the current child overrides that method, resolve to the child's version
-    const children = await symbolRepo.findChildren(current.symbolId);
+    const children = symbolRepo.findChildren(current.symbolId);
     const childMethodNames = new Set(children.map(c => c.name));
 
     for (const ref of callRefs) {
@@ -77,14 +77,14 @@ export async function handleFlow(deps: ToolDeps, params: FlowParams): Promise<st
           const childMethod = children.find(c => c.name.toLowerCase() === methodName);
           if (childMethod) {
             // Don't enqueue the method itself, enqueue what it references
-            const methodRefs = await refRepo.findDependencies(childMethod.id);
+            const methodRefs = refRepo.findDependencies(childMethod.id);
             const methodCallRefs = methodRefs.filter(r => CALL_KINDS.has(r.referenceKind));
             for (const mr of methodCallRefs) {
               if (mr.targetSymbolId && !visited.has(mr.targetSymbolId)) {
-                const target = await symbolRepo.findById(mr.targetSymbolId);
+                const target = symbolRepo.findById(mr.targetSymbolId);
                 if (target) {
                   const via = ref.sourceSymbolName
-                    ? `${ref.sourceSymbolName}() → ${childMethod.name}()`
+                    ? `${ref.sourceSymbolName}() \u2192 ${childMethod.name}()`
                     : `via ${childMethod.name}()`;
                   queue.push({
                     symbolId: target.id,
@@ -101,7 +101,7 @@ export async function handleFlow(deps: ToolDeps, params: FlowParams): Promise<st
       }
 
       if (targetId && !visited.has(targetId)) {
-        const target = await symbolRepo.findById(targetId);
+        const target = symbolRepo.findById(targetId);
         if (target) {
           const via = ref.sourceSymbolName ? `via ${ref.sourceSymbolName}()` : undefined;
           queue.push({
@@ -115,7 +115,7 @@ export async function handleFlow(deps: ToolDeps, params: FlowParams): Promise<st
         const leafIndent = '  '.repeat(current.depth + 1);
         const via = ref.sourceSymbolName ? `, via ${ref.sourceSymbolName}()` : '';
         const lineRef = ref.lineNumber ? ` (line ${ref.lineNumber})` : '';
-        lines.push(`${leafIndent}→ ${targetName}${lineRef}${via} (unresolved)`);
+        lines.push(`${leafIndent}\u2192 ${targetName}${lineRef}${via} (unresolved)`);
       }
     }
   }
@@ -131,20 +131,20 @@ export async function handleFlow(deps: ToolDeps, params: FlowParams): Promise<st
  * When a class inherits from BaseRoute, BaseRoute::getControllerInstance
  * calls getControllerName() / getBuilderName(). We want to trace through those.
  */
-async function getParentMethodRefs(
+function getParentMethodRefs(
   symbolId: number,
   symbolRepo: ToolDeps['symbolRepo'],
   refRepo: ToolDeps['refRepo']
-): Promise<ReferenceRecord[]> {
+): ReferenceRecord[] {
   // Find inheritance edges from this symbol
-  const directRefs = await refRepo.findDependencies(symbolId);
+  const directRefs = refRepo.findDependencies(symbolId);
   const inheritanceRefs = directRefs.filter(r => r.referenceKind === 'inheritance');
 
   const parentRefs: ReferenceRecord[] = [];
   for (const inh of inheritanceRefs) {
     if (!inh.targetSymbolId) continue;
     // Get the parent's methods' refs
-    const parentMethodRefs = await refRepo.findDependencies(inh.targetSymbolId);
+    const parentMethodRefs = refRepo.findDependencies(inh.targetSymbolId);
     // Only include self_calls (template method calls like $this->getControllerName())
     const selfCalls = parentMethodRefs.filter(r => r.referenceKind === 'self_call');
     parentRefs.push(...selfCalls);

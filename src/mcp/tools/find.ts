@@ -7,13 +7,13 @@ interface FindParams {
   path?: string;
 }
 
-export async function handleFind(deps: ToolDeps, params: FindParams): Promise<string> {
+export function handleFind(deps: ToolDeps, params: FindParams): string {
   const { repoId, symbolRepo } = deps;
   const limit = Math.max(1, Math.min(params.limit ?? 20, 50));
 
   // Convert * to % for SQL, wrap bare queries in %...%
   // Escape backslashes first so PHP namespace separators (App\Service)
-  // are not interpreted as SQL LIKE escape sequences by PostgreSQL.
+  // are not interpreted as SQL LIKE escape sequences.
   let pattern = params.query.replace(/\\/g, '\\\\');
   if (pattern.includes('*')) {
     pattern = pattern.replace(/\*/g, '%');
@@ -23,12 +23,12 @@ export async function handleFind(deps: ToolDeps, params: FindParams): Promise<st
   if (!pattern.startsWith('%')) pattern = `%${pattern}`;
   if (!pattern.endsWith('%')) pattern = `${pattern}%`;
 
-  const results = await symbolRepo.search(repoId, pattern, params.kind, limit, params.path);
+  const results = symbolRepo.search(repoId, pattern, params.kind, limit, params.path);
 
   if (results.length === 0) {
     // If path filter was used and got 0 results, suggest matching paths
     if (params.path) {
-      const pathHints = await symbolRepo.suggestPaths(repoId, params.path);
+      const pathHints = symbolRepo.suggestPaths(repoId, params.path);
       if (pathHints.length > 0) {
         return `No symbols found matching "${params.query}" in path "${params.path}".\n\nDid you mean one of these paths?\n${pathHints.map(p => `- ${p}`).join('\n')}`;
       }

@@ -2,7 +2,7 @@ import { Command } from 'commander';
 import { resolve } from 'path';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { loadConfig } from '../config.js';
-import { createPool } from '../db/connection.js';
+import { openDatabase } from '../db/connection.js';
 import { GeneratePipeline } from '../output/generate-pipeline.js';
 import { injectSection } from '../output/claudemd-injector.js';
 import { GenerateError } from '../errors.js';
@@ -12,13 +12,13 @@ export function createGenerateCommand(): Command {
     .description('Inject Cartograph tool guidance into your CLAUDE.md')
     .argument('<repo-path>', 'Path to the indexed repository')
     .option('--claude-md <path>', 'Path to CLAUDE.md to inject into (default: auto-detect)')
-    .action(async (repoPath: string, opts: { claudeMd?: string }) => {
+    .action((repoPath: string, opts: { claudeMd?: string }) => {
       const config = loadConfig(repoPath);
-      const pool = createPool(config.database);
+      const db = openDatabase(config.database);
 
       try {
-        const pipeline = new GeneratePipeline(pool);
-        const section = await pipeline.generateClaudeMdContent(repoPath);
+        const pipeline = new GeneratePipeline(db);
+        const section = pipeline.generateClaudeMdContent(repoPath);
 
         // Resolve CLAUDE.md path
         const claudeMdPath = opts.claudeMd || findClaudeMd(resolve(repoPath));
@@ -38,7 +38,7 @@ export function createGenerateCommand(): Command {
         }
         throw err;
       } finally {
-        await pool.end();
+        db.close();
       }
     });
 }

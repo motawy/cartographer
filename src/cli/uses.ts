@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import { loadConfig } from '../config.js';
-import { createPool } from '../db/connection.js';
+import { openDatabase } from '../db/connection.js';
 import { ReferenceRepository } from '../db/repositories/reference-repository.js';
 
 export function createUsesCommand(): Command {
@@ -9,15 +9,14 @@ export function createUsesCommand(): Command {
     .argument('<symbol>', 'Fully qualified symbol name')
     .option('--depth <n>', 'Depth of transitive search (default: 1)', '1')
     .option('--repo-path <path>', 'Repository path (for config loading)', '.')
-    .action(async (symbol: string, opts: { depth: string; repoPath: string }) => {
+    .action((symbol: string, opts: { depth: string; repoPath: string }) => {
       const config = loadConfig(opts.repoPath);
-      const pool = createPool(config.database);
+      const db = openDatabase(config.database);
 
       try {
-        const { rows: symbolRows } = await pool.query(
-          'SELECT id, qualified_name, kind FROM symbols WHERE qualified_name = $1',
-          [symbol]
-        );
+        const symbolRows = db.prepare(
+          'SELECT id, qualified_name, kind FROM symbols WHERE qualified_name = ?'
+        ).all(symbol) as { id: number; qualified_name: string; kind: string }[];
 
         if (symbolRows.length === 0) {
           console.error(`Symbol not found: ${symbol}`);
@@ -25,9 +24,9 @@ export function createUsesCommand(): Command {
           process.exit(1);
         }
 
-        const refRepo = new ReferenceRepository(pool);
+        const refRepo = new ReferenceRepository(db);
         const depth = parseInt(opts.depth, 10);
-        const dependents = await refRepo.findDependents(symbolRows[0].id, depth);
+        const dependents = refRepo.findDependents(symbolRows[0].id, depth);
 
         if (dependents.length === 0) {
           console.log(`No references found for ${symbol}`);
@@ -46,7 +45,7 @@ export function createUsesCommand(): Command {
           console.log(`    ${filePath}`);
         }
       } finally {
-        await pool.end();
+        db.close();
       }
     });
 }

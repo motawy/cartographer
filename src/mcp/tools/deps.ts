@@ -5,11 +5,11 @@ interface DepsParams {
   depth?: number;
 }
 
-export async function handleDeps(deps: ToolDeps, params: DepsParams): Promise<string> {
+export function handleDeps(deps: ToolDeps, params: DepsParams): string {
   const { repoId, symbolRepo, refRepo } = deps;
   const maxDepth = Math.max(1, Math.min(params.depth ?? 3, 10));
 
-  const startSymbol = await symbolRepo.findByQualifiedName(repoId, params.symbol);
+  const startSymbol = symbolRepo.findByQualifiedName(repoId, params.symbol);
   if (!startSymbol) {
     return `Symbol not found: "${params.symbol}". Use cartograph_find to search.`;
   }
@@ -42,7 +42,7 @@ export async function handleDeps(deps: ToolDeps, params: DepsParams): Promise<st
     lines.push(`${indent}${prefix} ${current.qualifiedName}${viaLabel}`);
     maxReached = Math.max(maxReached, current.depth);
 
-    const refs = await refRepo.findDependencies(current.symbolId);
+    const refs = refRepo.findDependencies(current.symbolId);
 
     // At depth 0: show all reference kinds. At deeper levels: call-type + class_reference.
     // class_reference covers return Foo::class wiring (Route→Controller→Builder→Model).
@@ -60,7 +60,7 @@ export async function handleDeps(deps: ToolDeps, params: DepsParams): Promise<st
         : viaLine ? viaLine : undefined;
 
       if (ref.targetSymbolId && !visited.has(ref.targetSymbolId)) {
-        const target = await symbolRepo.findById(ref.targetSymbolId);
+        const target = symbolRepo.findById(ref.targetSymbolId);
         if (target) {
           queue.push({
             symbolId: target.id,

@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import { loadConfig } from '../config.js';
-import { createPool } from '../db/connection.js';
+import { openDatabase } from '../db/connection.js';
 import { runMigrations } from '../db/migrate.js';
 import { IndexPipeline } from '../indexer/pipeline.js';
 import { join, dirname } from 'path';
@@ -15,26 +15,26 @@ export function createIndexCommand(): Command {
     .option('--run-migrations', 'Run database migrations before indexing')
     .option('--verbose', 'Log every file as it is processed')
     .option('--log <path>', 'Write full log output to a file')
-    .action(async (repoPath: string, opts: { runMigrations?: boolean; verbose?: boolean; log?: string }) => {
+    .action((repoPath: string, opts: { runMigrations?: boolean; verbose?: boolean; log?: string }) => {
       const config = loadConfig(repoPath);
-      const pool = createPool(config.database);
+      const db = openDatabase(config.database);
 
       try {
         if (opts.runMigrations) {
           console.log('Running migrations...');
-          await runMigrations(
-            pool,
+          runMigrations(
+            db,
             join(__dirname, '..', 'db', 'migrations')
           );
         }
 
-        const pipeline = new IndexPipeline(pool);
-        await pipeline.run(repoPath, config, {
+        const pipeline = new IndexPipeline(db);
+        pipeline.run(repoPath, config, {
           verbose: opts.verbose,
           logFile: opts.log,
         });
       } finally {
-        await pool.end();
+        db.close();
       }
     });
 }

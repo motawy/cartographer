@@ -6,14 +6,14 @@ interface SymbolParams {
   deep?: boolean;
 }
 
-export async function handleSymbol(deps: ToolDeps, stats: RepoStats, params: SymbolParams): Promise<string> {
+export function handleSymbol(deps: ToolDeps, stats: RepoStats, params: SymbolParams): string {
   const { repoId, symbolRepo, refRepo } = deps;
   const { name } = params;
 
   // Search with suffix pattern — works for both exact qualified names and short names.
-  // Escape backslashes for ILIKE (PostgreSQL treats \ as escape char in ILIKE patterns).
+  // Escape backslashes for LIKE pattern matching.
   const escapedName = name.replace(/\\/g, '\\\\');
-  const searchResults = await symbolRepo.search(repoId, `%${escapedName}`, undefined, 10);
+  const searchResults = symbolRepo.search(repoId, `%${escapedName}`, undefined, 10);
   let matches: { symbol: (typeof searchResults)[0]; filePath: string }[] = [];
 
   if (searchResults.length === 0) {
@@ -39,7 +39,7 @@ export async function handleSymbol(deps: ToolDeps, stats: RepoStats, params: Sym
     if (sym.visibility) lines.push(`Visibility: ${sym.visibility}`);
 
     // Forward deps (fetched early so conventions context can reuse them)
-    const forwardDeps = await refRepo.findDependencies(sym.id);
+    const forwardDeps = refRepo.findDependencies(sym.id);
 
     // Conventions context for classes
     if (sym.kind === 'class') {
@@ -50,14 +50,14 @@ export async function handleSymbol(deps: ToolDeps, stats: RepoStats, params: Sym
     // Deep mode: show full vertical stack for classes
     if (params.deep && sym.kind === 'class') {
       lines.push('');
-      await appendDeepView(lines, sym.id, forwardDeps, repoId, symbolRepo, refRepo);
+      appendDeepView(lines, sym.id, forwardDeps, repoId, symbolRepo, refRepo);
     } else {
       lines.push('');
       if (forwardDeps.length > 0) {
         lines.push(`### Depends on (${forwardDeps.length})`);
         for (const dep of forwardDeps) {
           const targetName = dep.targetSymbolId
-            ? (await symbolRepo.findById(dep.targetSymbolId))?.qualifiedName ?? dep.targetQualifiedName
+            ? symbolRepo.findById(dep.targetSymbolId)?.qualifiedName ?? dep.targetQualifiedName
             : `${dep.targetQualifiedName} (unresolved)`;
           const lineRef = dep.lineNumber ? `, line ${dep.lineNumber}` : '';
           const via = dep.sourceSymbolName && dep.sourceSymbolId !== sym.id
@@ -68,7 +68,7 @@ export async function handleSymbol(deps: ToolDeps, stats: RepoStats, params: Sym
       }
 
       // Reverse deps
-      const reverseDeps = (await refRepo.findDependents(sym.id, 1)) as unknown as DependentRow[];
+      const reverseDeps = refRepo.findDependents(sym.id, 1) as unknown as DependentRow[];
       if (reverseDeps.length > 0) {
         lines.push(`### Used by (${reverseDeps.length})`);
         for (const dep of reverseDeps) {
@@ -85,14 +85,14 @@ export async function handleSymbol(deps: ToolDeps, stats: RepoStats, params: Sym
   return sections.join('\n\n---\n\n');
 }
 
-async function appendDeepView(
+function appendDeepView(
   lines: string[],
   symbolId: number,
   forwardDeps: ReferenceRecord[],
   repoId: number,
   symbolRepo: ToolDeps['symbolRepo'],
   refRepo: ToolDeps['refRepo']
-): Promise<void> {
+): void {
   lines.push('### Stack');
 
   // 1. Inheritance chain
@@ -100,7 +100,7 @@ async function appendDeepView(
   if (inheritance.length > 0) {
     for (const inh of inheritance) {
       const targetName = inh.targetSymbolId
-        ? (await symbolRepo.findById(inh.targetSymbolId))?.qualifiedName ?? inh.targetQualifiedName
+        ? symbolRepo.findById(inh.targetSymbolId)?.qualifiedName ?? inh.targetQualifiedName
         : inh.targetQualifiedName;
       lines.push(`  Extends: ${targetName}`);
     }
@@ -111,15 +111,15 @@ async function appendDeepView(
   if (classRefs.length > 0) {
     for (const ref of classRefs) {
       const targetName = ref.targetSymbolId
-        ? (await symbolRepo.findById(ref.targetSymbolId))?.qualifiedName ?? ref.targetQualifiedName
+        ? symbolRepo.findById(ref.targetSymbolId)?.qualifiedName ?? ref.targetQualifiedName
         : ref.targetQualifiedName;
       const via = ref.sourceSymbolName ? `via ${ref.sourceSymbolName}()` : '';
-      lines.push(`  ${via ? via + ': ' : '→ '}${targetName}`);
+      lines.push(`  ${via ? via + ': ' : '\u2192 '}${targetName}`);
     }
   }
 
   // 3. Concrete implementations (who extends this class?)
-  const implementors = (await refRepo.findDependents(symbolId, 1)) as unknown as DependentRow[];
+  const implementors = refRepo.findDependents(symbolId, 1) as unknown as DependentRow[];
   const concreteExtenders = implementors.filter(d => d.reference_kind === 'inheritance');
   if (concreteExtenders.length > 0 && concreteExtenders.length <= 5) {
     lines.push('');
@@ -129,7 +129,7 @@ async function appendDeepView(
     }
   } else if (concreteExtenders.length > 5) {
     lines.push('');
-    lines.push(`### Extended by (${concreteExtenders.length} classes — showing first 5)`);
+    lines.push(`### Extended by (${concreteExtenders.length} classes \u2014 showing first 5)`);
     for (const ext of concreteExtenders.slice(0, 5)) {
       lines.push(`  - ${ext.source_qualified_name}`);
     }
@@ -141,10 +141,10 @@ async function appendDeepView(
     lines.push('### Wiring detail (depth 2)');
     for (const ref of classRefs) {
       if (!ref.targetSymbolId) continue;
-      const target = await symbolRepo.findById(ref.targetSymbolId);
+      const target = symbolRepo.findById(ref.targetSymbolId);
       if (!target) continue;
 
-      const targetDeps = await refRepo.findDependencies(target.id);
+      const targetDeps = refRepo.findDependencies(target.id);
       const targetClassRefs = targetDeps.filter(d => d.referenceKind === 'class_reference');
       const targetInheritance = targetDeps.filter(d => d.referenceKind === 'inheritance');
 
@@ -155,10 +155,10 @@ async function appendDeepView(
       }
       for (const cr of targetClassRefs) {
         const crVia = cr.sourceSymbolName ? `via ${cr.sourceSymbolName}()` : '';
-        parts.push(`${crVia ? crVia + ': ' : '→ '}${cr.targetQualifiedName}`);
+        parts.push(`${crVia ? crVia + ': ' : '\u2192 '}${cr.targetQualifiedName}`);
       }
 
-      lines.push(`  ${via} → ${target.qualifiedName}`);
+      lines.push(`  ${via} \u2192 ${target.qualifiedName}`);
       for (const part of parts) {
         lines.push(`    ${part}`);
       }
@@ -166,7 +166,7 @@ async function appendDeepView(
   }
 
   // 5. Context requirements: what route args/params does this class consume?
-  const children = await symbolRepo.findChildren(symbolId);
+  const children = symbolRepo.findChildren(symbolId);
   const argEntries: { key: string; method: string; }[] = [];
   const paramEntries: { key: string; method: string; }[] = [];
 

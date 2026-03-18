@@ -5,11 +5,11 @@ interface BlastRadiusParams {
   depth?: number;
 }
 
-export async function handleBlastRadius(deps: ToolDeps, params: BlastRadiusParams): Promise<string> {
+export function handleBlastRadius(deps: ToolDeps, params: BlastRadiusParams): string {
   const { repoId, symbolRepo, refRepo } = deps;
   const depth = Math.max(1, Math.min(params.depth ?? 2, 5));
 
-  const fileSymbols = await symbolRepo.findByFilePath(repoId, params.file);
+  const fileSymbols = symbolRepo.findByFilePath(repoId, params.file);
   if (fileSymbols.length === 0) {
     return `File not found in index: "${params.file}". Paths are relative to repo root.`;
   }
@@ -18,7 +18,7 @@ export async function handleBlastRadius(deps: ToolDeps, params: BlastRadiusParam
   const allDependents = new Map<string, { qualifiedName: string; filePath: string }>();
 
   for (const sym of fileSymbols) {
-    const results = (await refRepo.findDependents(sym.id, depth)) as unknown as DependentRow[];
+    const results = refRepo.findDependents(sym.id, depth) as unknown as DependentRow[];
     for (const row of results) {
       if (row.source_qualified_name && !allDependents.has(row.source_qualified_name)) {
         allDependents.set(row.source_qualified_name, {
@@ -56,7 +56,7 @@ export async function handleBlastRadius(deps: ToolDeps, params: BlastRadiusParam
     lines.push(`### ${filePath} (${symbols.length} symbol${symbols.length === 1 ? '' : 's'} affected)`);
     for (const sym of symbols) {
       const shortName = sym.split('\\').pop() ?? sym;
-      lines.push(`→ ${shortName}`);
+      lines.push(`\u2192 ${shortName}`);
     }
     lines.push('');
   }

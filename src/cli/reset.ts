@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import { loadConfig } from '../config.js';
-import { createPool } from '../db/connection.js';
+import { openDatabase } from '../db/connection.js';
 import { runMigrations } from '../db/migrate.js';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -27,19 +27,25 @@ export function createResetCommand(): Command {
       }
 
       const config = loadConfig(repoPath);
-      const pool = createPool(config.database);
+      const db = openDatabase(config.database);
 
       try {
-        console.log('Dropping schema...');
-        await pool.query('DROP SCHEMA public CASCADE');
-        await pool.query('CREATE SCHEMA public');
+        console.log('Dropping all tables...');
+        // Get all tables and drop them
+        const tables = db.prepare(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+        ).all() as { name: string }[];
+
+        for (const { name } of tables) {
+          db.exec(`DROP TABLE IF EXISTS "${name}"`);
+        }
 
         console.log('Running migrations...');
-        await runMigrations(pool, join(__dirname, '..', 'db', 'migrations'));
+        runMigrations(db, join(__dirname, '..', 'db', 'migrations'));
 
-        console.log('✅ Database reset complete.');
+        console.log('\u2705 Database reset complete.');
       } finally {
-        await pool.end();
+        db.close();
       }
     });
 }
