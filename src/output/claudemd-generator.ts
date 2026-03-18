@@ -17,22 +17,23 @@ export function generateClaudeMdSection(stats: RepoStats, conventions: Conventio
   lines.push(`### Workflow`);
   lines.push(`1. Run \`cartograph_status\` to check if the index is fresh (warns if stale)`);
   lines.push(`2. Use \`cartograph_find\` before grepping — it searches the pre-built index`);
-  lines.push(`3. Use \`cartograph_symbol\` to understand a class's relationships`);
-  lines.push(`4. Use \`cartograph_compare\` for pattern-copy work (what does A have that B doesn't?)`);
-  lines.push(`5. Use \`cartograph_deps\` / \`cartograph_flow\` to trace dependency chains\n`);
+  lines.push(`3. Use \`cartograph_symbol\` with \`deep: true\` to see the full vertical stack (Route→Controller→Builder→Model) in one call`);
+  lines.push(`4. Use \`cartograph_compare\` for pattern-copy work — shows what A has that B doesn't, with method bodies and wiring targets inlined`);
+  lines.push(`5. Use \`cartograph_deps\` to trace forward dependencies — shows which method creates each edge (e.g. "via getControllerName(), line 13")`);
+  lines.push(`6. Use \`cartograph_flow\` to trace execution flow — follows parent class template methods through child overrides\n`);
 
   // Tool reference
   lines.push(`### Available Tools\n`);
   lines.push('| Tool | What it does | Key options |');
   lines.push('|------|-------------|-------------|');
   lines.push('| `cartograph_status` | Check index health and freshness | — |');
-  lines.push('| `cartograph_find` | Search symbols by name (fuzzy match — always matches anywhere in qualified name) | `kind`: filter by class/method/interface/etc. `path`: filter by file path prefix (e.g. `"app/Services"`) |');
-  lines.push('| `cartograph_symbol` | Look up a class and its relationships (extends, implements, deps, dependents) | `name`: fully or partially qualified |');
-  lines.push('| `cartograph_deps` | Forward dependency graph — what does this symbol depend on? | `depth`: 1-10 (default 3) |');
+  lines.push('| `cartograph_find` | Search symbols by name (fuzzy, matches anywhere in qualified name). Path filter supports partial/substring matching. Suggests corrections on 0 results. | `kind`: class/method/interface/etc. `path`: substring match on file path (e.g. `"Route/Root/Companies"`) |');
+  lines.push('| `cartograph_symbol` | Look up a class and its relationships. With `deep: true`, shows full vertical stack: inheritance, wiring (which method → which class), concrete implementations, and depth-2 wiring detail. | `name`: fully or partially qualified. `deep`: true for full stack view |');
+  lines.push('| `cartograph_deps` | Forward dependency graph. Shows which method creates each edge (e.g. "via getControllerName(), line 13"). Follows `::class` references through method bodies. | `depth`: 1-10 (default 3) |');
   lines.push('| `cartograph_dependents` | Reverse dependency lookup — what depends on this symbol? | `depth`: 1-5 (default 1) |');
   lines.push('| `cartograph_blast_radius` | What breaks if this file changes? | `depth`: 1-5 (default 2) |');
-  lines.push('| `cartograph_flow` | Trace execution flow from an entrypoint (follows calls + `::class` references) | `depth`: 1-15 (default 5) |');
-  lines.push('| `cartograph_compare` | Structural diff of two symbols — methods/properties in A but not B | `symbolA`, `symbolB`: fully or partially qualified |');
+  lines.push('| `cartograph_flow` | Trace execution flow from an entrypoint. Follows calls, `::class` refs, and parent class template methods (resolves `$this->getX()` through child overrides). | `depth`: 1-15 (default 5) |');
+  lines.push('| `cartograph_compare` | Structural diff: methods in A but not B, shared methods with wiring differences. Inlines short method bodies (≤5 lines) so you don\'t need a follow-up read. Shows `::class` wiring targets per method. | `symbolA`, `symbolB`: fully or partially qualified |');
   lines.push('');
 
   // Top directories for orientation
