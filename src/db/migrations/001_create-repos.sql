@@ -1,7 +1,7 @@
-CREATE TABLE repos (
-    id              SERIAL PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS repos (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
     path            TEXT NOT NULL UNIQUE,
     name            TEXT NOT NULL,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    last_indexed_at TIMESTAMPTZ
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    last_indexed_at TEXT
 );
