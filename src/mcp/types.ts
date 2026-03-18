@@ -3,6 +3,7 @@ import type { ReferenceRepository } from '../db/repositories/reference-repositor
 
 export type ToolDeps = {
   repoId: number;
+  repoPath?: string;
   symbolRepo: SymbolRepository;
   refRepo: ReferenceRepository;
 };

@@ -3,6 +3,7 @@ import type pg from 'pg';
 export interface ReferenceRecord {
   id: number;
   sourceSymbolId: number;
+  sourceSymbolName: string | null;
   targetQualifiedName: string;
   targetSymbolId: number | null;
   referenceKind: string;
@@ -150,8 +151,10 @@ export class ReferenceRepository {
     // Include references from the symbol itself AND its child symbols (methods).
     // This ensures class-level queries surface ::class refs from methods like
     // getBuilderName() { return Builder::class; }
+    // Join source symbol name so callers can show "via getBuilderName()" context.
     const { rows } = await this.pool.query(
-      `SELECT sr.* FROM symbol_references sr
+      `SELECT sr.*, s.name AS source_symbol_name FROM symbol_references sr
+       JOIN symbols s ON s.id = sr.source_symbol_id
        WHERE sr.source_symbol_id = $1
           OR sr.source_symbol_id IN (SELECT id FROM symbols WHERE parent_symbol_id = $1)
        ORDER BY sr.line_number`,
@@ -175,6 +178,7 @@ export class ReferenceRepository {
     return {
       id: row.id as number,
       sourceSymbolId: row.source_symbol_id as number,
+      sourceSymbolName: (row.source_symbol_name as string) || null,
       targetQualifiedName: row.target_qualified_name as string,
       targetSymbolId: (row.target_symbol_id as number) || null,
       referenceKind: row.reference_kind as string,

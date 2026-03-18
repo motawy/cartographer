@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
+import { writeFileSync, mkdirSync, rmSync } from 'fs';
 import pg from 'pg';
 import { RepoRepository } from '../../src/db/repositories/repo-repository.js';
 import { FileRepository } from '../../src/db/repositories/file-repository.js';
@@ -168,5 +169,66 @@ describe('cartograph_compare', () => {
     expect(result).toContain('app\\builderb');
     // Only-in-B method getControllerName should show its target
     expect(result).toContain('app\\controllerb');
+  });
+
+  it('inlines short method bodies when repoPath is available', async () => {
+    const repoRepo = new RepoRepository(pool);
+    const fileRepo = new FileRepository(pool);
+    const symbolRepo = new SymbolRepository(pool);
+    const refRepo = new ReferenceRepository(pool);
+
+    // Create a temp repo dir with a PHP file
+    const tmpDir = '/tmp/cartograph-compare-test';
+    mkdirSync(tmpDir, { recursive: true });
+    writeFileSync(`${tmpDir}/route-a.php`, [
+      '<?php',
+      'class RouteA {',
+      '    protected function getSubRouteFolder(): string',
+      '    {',
+      "        return 'JobCostCenters';",
+      '    }',
+      '    public function getControllerName(): string',
+      '    {',
+      '        return Controller::class;',
+      '    }',
+      '}',
+    ].join('\n'));
+    writeFileSync(`${tmpDir}/route-b.php`, [
+      '<?php',
+      'class RouteB {',
+      '    public function getControllerName(): string',
+      '    {',
+      '        return Controller::class;',
+      '    }',
+      '}',
+    ].join('\n'));
+
+    const repo = await repoRepo.findOrCreate(tmpDir, 'test-body');
+    const f1 = await fileRepo.upsert(repo.id, 'route-a.php', 'php', 'body1', 11);
+    const f2 = await fileRepo.upsert(repo.id, 'route-b.php', 'php', 'body2', 7);
+
+    await symbolRepo.replaceFileSymbols(f1.id, [
+      makeClassWithMethods('RouteA', 'Test\\RouteA', [
+        { name: 'getSubRouteFolder', line: 3, signature: 'getSubRouteFolder(): string' },
+        { name: 'getControllerName', line: 7, signature: 'getControllerName(): string' },
+      ]),
+    ]);
+    await symbolRepo.replaceFileSymbols(f2.id, [
+      makeClassWithMethods('RouteB', 'Test\\RouteB', [
+        { name: 'getControllerName', line: 3, signature: 'getControllerName(): string' },
+      ]),
+    ]);
+
+    const toolDeps: ToolDeps = { repoId: repo.id, repoPath: tmpDir, symbolRepo, refRepo };
+    const result = await handleCompare(toolDeps, {
+      symbolA: 'Test\\RouteA',
+      symbolB: 'Test\\RouteB',
+    });
+
+    // The delta method getSubRouteFolder should show its body
+    expect(result).toContain('getSubRouteFolder');
+    expect(result).toContain("return 'JobCostCenters'");
+
+    rmSync(tmpDir, { recursive: true });
   });
 });

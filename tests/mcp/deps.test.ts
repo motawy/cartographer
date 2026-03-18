@@ -124,4 +124,43 @@ describe('cartograph_deps', () => {
     // Controller at depth 1 should ALSO follow class_reference to Builder
     expect(result).toContain('App\\Builder');
   });
+
+  it('shows via context (method name + line) for child method refs', async () => {
+    const repoRepo = new RepoRepository(pool);
+    const fileRepo = new FileRepository(pool);
+    const symbolRepo = new SymbolRepository(pool);
+    const refRepo = new ReferenceRepository(pool);
+
+    const repo = await repoRepo.findOrCreate('/test/via-context', 'test-via');
+    const f1 = await fileRepo.upsert(repo.id, 'route.php', 'php', 'hv1', 30);
+    const f2 = await fileRepo.upsert(repo.id, 'controller.php', 'php', 'hv2', 10);
+
+    const ids1 = await symbolRepo.replaceFileSymbols(f1.id, [{
+      name: 'MyRoute', qualifiedName: 'App\\MyRoute', kind: 'class', visibility: null,
+      lineStart: 1, lineEnd: 30, signature: null, returnType: null,
+      docblock: null, metadata: {},
+      children: [{
+        name: 'getControllerName', qualifiedName: 'App\\MyRoute::getControllerName', kind: 'method',
+        visibility: 'public', lineStart: 10, lineEnd: 13, signature: null, returnType: null,
+        docblock: null, children: [], metadata: {},
+      }],
+    }]);
+    await symbolRepo.replaceFileSymbols(f2.id, [{
+      name: 'MyController', qualifiedName: 'App\\MyController', kind: 'class', visibility: null,
+      lineStart: 1, lineEnd: 10, signature: null, returnType: null,
+      docblock: null, children: [], metadata: {},
+    }]);
+
+    await refRepo.replaceFileReferences(f1.id, ids1, [
+      { sourceQualifiedName: 'App\\MyRoute::getControllerName', targetQualifiedName: 'app\\mycontroller', kind: 'class_reference', line: 12 },
+    ]);
+    await refRepo.resolveTargets(repo.id);
+
+    const toolDeps: ToolDeps = { repoId: repo.id, symbolRepo, refRepo };
+    const result = await handleDeps(toolDeps, { symbol: 'App\\MyRoute', depth: 1 });
+
+    expect(result).toContain('App\\MyController');
+    expect(result).toContain('via getControllerName()');
+    expect(result).toContain('line 12');
+  });
 });

@@ -23,7 +23,7 @@ export function createServeCommand(): Command {
         process.exit(1);
       }
 
-      const server = await createServer({ pool, repoId: repo.id });
+      const server = await createServer({ pool, repoId: repo.id, repoPath });
       const transport = new StdioServerTransport();
 
       const shutdown = async () => {

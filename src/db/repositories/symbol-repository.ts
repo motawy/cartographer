@@ -156,6 +156,14 @@ export class SymbolRepository {
     }));
   }
 
+  async getFilePath(fileId: number): Promise<string | null> {
+    const { rows } = await this.pool.query(
+      'SELECT path FROM files WHERE id = $1',
+      [fileId]
+    );
+    return rows.length > 0 ? (rows[0].path as string) : null;
+  }
+
   async suggestPaths(repoId: number, pathFragment: string): Promise<string[]> {
     // Find distinct directory paths containing the fragment, for "did you mean?" suggestions
     const { rows } = await this.pool.query(

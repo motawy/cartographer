@@ -19,7 +19,13 @@ export async function handleDeps(deps: ToolDeps, params: DepsParams): Promise<st
 
   // BFS forward traversal
   const visited = new Set<number>();
-  const queue: { symbolId: number; qualifiedName: string; depth: number }[] = [
+  interface QueueItem {
+    symbolId: number;
+    qualifiedName: string;
+    depth: number;
+    via?: string; // "getBuilderName(), line 21" — which method created this edge
+  }
+  const queue: QueueItem[] = [
     { symbolId: startSymbol.id, qualifiedName: startSymbol.qualifiedName!, depth: 0 },
   ];
   let maxReached = 0;
@@ -32,7 +38,8 @@ export async function handleDeps(deps: ToolDeps, params: DepsParams): Promise<st
 
     const indent = '  '.repeat(current.depth);
     const prefix = current.depth === 0 ? `${current.depth + 1}.` : `→`;
-    lines.push(`${indent}${prefix} ${current.qualifiedName}`);
+    const viaLabel = current.via ? `  (via ${current.via})` : '';
+    lines.push(`${indent}${prefix} ${current.qualifiedName}${viaLabel}`);
     maxReached = Math.max(maxReached, current.depth);
 
     const refs = await refRepo.findDependencies(current.symbolId);
@@ -44,6 +51,14 @@ export async function handleDeps(deps: ToolDeps, params: DepsParams): Promise<st
       : refs.filter(r => ['static_call', 'self_call', 'instantiation', 'class_reference'].includes(r.referenceKind));
 
     for (const ref of filteredRefs) {
+      // Build "via" context: which method created this edge
+      const viaMethod = ref.sourceSymbolName && ref.sourceSymbolId !== current.symbolId
+        ? ref.sourceSymbolName : null;
+      const viaLine = ref.lineNumber ? `line ${ref.lineNumber}` : null;
+      const via = viaMethod
+        ? `${viaMethod}()${viaLine ? `, ${viaLine}` : ''}`
+        : viaLine ? viaLine : undefined;
+
       if (ref.targetSymbolId && !visited.has(ref.targetSymbolId)) {
         const target = await symbolRepo.findById(ref.targetSymbolId);
         if (target) {
@@ -51,13 +66,14 @@ export async function handleDeps(deps: ToolDeps, params: DepsParams): Promise<st
             symbolId: target.id,
             qualifiedName: target.qualifiedName!,
             depth: current.depth + 1,
+            via,
           });
         }
       } else if (!ref.targetSymbolId) {
         // Unresolved reference — show as leaf
         const leafIndent = '  '.repeat(current.depth + 1);
-        const lineRef = ref.lineNumber ? `, line ${ref.lineNumber}` : '';
-        lines.push(`${leafIndent}→ ${ref.targetQualifiedName} (${ref.referenceKind}${lineRef}, unresolved)`);
+        const viaStr = via ? `, via ${via}` : '';
+        lines.push(`${leafIndent}→ ${ref.targetQualifiedName} (${ref.referenceKind}${viaStr}, unresolved)`);
       }
     }
   }

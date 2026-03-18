@@ -16,6 +16,7 @@ import { handleStatus } from './tools/status.js';
 interface ServerOptions {
   pool: pg.Pool;
   repoId: number;
+  repoPath?: string;
 }
 
 export async function createServer(opts: ServerOptions): Promise<McpServer> {
@@ -24,6 +25,7 @@ export async function createServer(opts: ServerOptions): Promise<McpServer> {
 
   const deps: ToolDeps = {
     repoId: opts.repoId,
+    repoPath: opts.repoPath,
     symbolRepo,
     refRepo,
   };

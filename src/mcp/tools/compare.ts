@@ -1,3 +1,5 @@
+import { readFile } from 'fs/promises';
+import { join } from 'path';
 import type { ToolDeps } from '../types.js';
 import type { SymbolRecord } from '../../db/repositories/symbol-repository.js';
 import type { ReferenceRecord } from '../../db/repositories/reference-repository.js';
@@ -7,8 +9,10 @@ interface CompareParams {
   symbolB: string;
 }
 
+const MAX_INLINE_LINES = 5; // Only inline methods this short or shorter
+
 export async function handleCompare(deps: ToolDeps, params: CompareParams): Promise<string> {
-  const { repoId, symbolRepo, refRepo } = deps;
+  const { repoId, repoPath, symbolRepo, refRepo } = deps;
 
   const symA = await resolveSymbol(repoId, params.symbolA, symbolRepo);
   if (!symA) {
@@ -39,6 +43,13 @@ export async function handleCompare(deps: ToolDeps, params: CompareParams): Prom
   const onlyInB = childrenB.filter(c => !namesA.has(c.name));
   const shared = childrenA.filter(c => namesB.has(c.name));
 
+  // Pre-load method bodies for delta methods (short methods only)
+  const bodyMap = new Map<number, string>();
+  if (repoPath) {
+    const deltaSymbols = [...onlyInA, ...onlyInB];
+    await loadMethodBodies(deltaSymbols, repoPath, symbolRepo, bodyMap);
+  }
+
   const lines: string[] = [];
   lines.push(`## Compare: ${symA.qualifiedName} vs ${symB.qualifiedName}\n`);
 
@@ -47,7 +58,7 @@ export async function handleCompare(deps: ToolDeps, params: CompareParams): Prom
     lines.push('(none)');
   } else {
     for (const c of onlyInA) {
-      lines.push(formatChild(c, refsMap.get(c.id)));
+      lines.push(formatChild(c, refsMap.get(c.id), bodyMap.get(c.id)));
     }
   }
   lines.push('');
@@ -57,7 +68,7 @@ export async function handleCompare(deps: ToolDeps, params: CompareParams): Prom
     lines.push('(none)');
   } else {
     for (const c of onlyInB) {
-      lines.push(formatChild(c, refsMap.get(c.id)));
+      lines.push(formatChild(c, refsMap.get(c.id), bodyMap.get(c.id)));
     }
   }
   lines.push('');
@@ -85,11 +96,15 @@ export async function handleCompare(deps: ToolDeps, params: CompareParams): Prom
   return lines.join('\n');
 }
 
-function formatChild(c: SymbolRecord, refs?: ReferenceRecord[]): string {
-  const sig = c.signature ? ` → ${c.signature}` : '';
+function formatChild(c: SymbolRecord, refs?: ReferenceRecord[], body?: string): string {
   const vis = c.visibility ? `${c.visibility} ` : '';
   const refHint = formatRefHint(refs);
   const refSuffix = refHint ? ` → ${refHint}` : '';
+  // Prefer inline body over signature for short methods
+  if (body) {
+    return `- ${vis}${c.name}()${refSuffix} (line ${c.lineStart})\n  \`\`\`\n  ${body}\n  \`\`\``;
+  }
+  const sig = c.signature ? ` → ${c.signature}` : '';
   return `- ${vis}${c.name}${sig}${refSuffix} (line ${c.lineStart})`;
 }
 
@@ -101,6 +116,47 @@ function formatRefHint(refs?: ReferenceRecord[]): string | null {
     return classRefs.map(r => r.targetQualifiedName).join(', ');
   }
   return null;
+}
+
+async function loadMethodBodies(
+  symbols: SymbolRecord[],
+  repoPath: string,
+  symbolRepo: ToolDeps['symbolRepo'],
+  bodyMap: Map<number, string>
+): Promise<void> {
+  // Group short methods by fileId to minimize file reads
+  const shortMethods = symbols.filter(s => s.lineEnd - s.lineStart <= MAX_INLINE_LINES);
+  if (shortMethods.length === 0) return;
+
+  const byFile = new Map<number, SymbolRecord[]>();
+  for (const s of shortMethods) {
+    const list = byFile.get(s.fileId) || [];
+    list.push(s);
+    byFile.set(s.fileId, list);
+  }
+
+  for (const [fileId, methods] of byFile) {
+    const filePath = await symbolRepo.getFilePath(fileId);
+    if (!filePath) continue;
+
+    try {
+      const fullPath = join(repoPath, filePath);
+      const content = await readFile(fullPath, 'utf-8');
+      const fileLines = content.split('\n');
+
+      for (const method of methods) {
+        // Extract method body (skip the opening line with function signature)
+        const bodyLines = fileLines.slice(method.lineStart, method.lineEnd)
+          .map(l => l.trim())
+          .filter(l => l !== '' && l !== '{' && l !== '}');
+        if (bodyLines.length > 0 && bodyLines.length <= 3) {
+          bodyMap.set(method.id, bodyLines.join('\n  '));
+        }
+      }
+    } catch {
+      // File not accessible — skip silently (e.g., remote DB without local repo)
+    }
+  }
 }
 
 async function resolveSymbol(
