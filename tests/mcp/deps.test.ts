@@ -83,4 +83,45 @@ describe('cartograph_deps', () => {
     const result = await handleDeps(deps, { symbol: 'Ns\\Z' });
     expect(result).toContain('not found');
   });
+
+  it('follows class_reference edges at depth > 0', async () => {
+    // Setup: D → E (instantiation, depth 0), E → F (class_reference, depth 1)
+    // This mimics Route → Builder wiring via return Builder::class
+    const repoRepo = new RepoRepository(pool);
+    const fileRepo = new FileRepository(pool);
+    const symbolRepo = new SymbolRepository(pool);
+    const refRepo = new ReferenceRepository(pool);
+
+    const repo = await repoRepo.findOrCreate('/test/class-ref-repo', 'test-classref');
+    const fd = await fileRepo.upsert(repo.id, 'route.php', 'php', 'hd', 10);
+    const fe = await fileRepo.upsert(repo.id, 'controller.php', 'php', 'he', 10);
+    const ff = await fileRepo.upsert(repo.id, 'builder.php', 'php', 'hf', 10);
+
+    const mkClass = (name: string, qn: string): ParsedSymbol => ({
+      name, qualifiedName: qn, kind: 'class', visibility: null,
+      lineStart: 1, lineEnd: 10, signature: null, returnType: null,
+      docblock: null, children: [], metadata: {},
+    });
+
+    const idsD = await symbolRepo.replaceFileSymbols(fd.id, [mkClass('Route', 'App\\Route')]);
+    const idsE = await symbolRepo.replaceFileSymbols(fe.id, [mkClass('Controller', 'App\\Controller')]);
+    await symbolRepo.replaceFileSymbols(ff.id, [mkClass('Builder', 'App\\Builder')]);
+
+    // Route → Controller (class_reference), Controller → Builder (class_reference)
+    await refRepo.replaceFileReferences(fd.id, idsD, [
+      { sourceQualifiedName: 'App\\Route', targetQualifiedName: 'app\\controller', kind: 'class_reference', line: 10 },
+    ]);
+    await refRepo.replaceFileReferences(fe.id, idsE, [
+      { sourceQualifiedName: 'App\\Controller', targetQualifiedName: 'app\\builder', kind: 'class_reference', line: 15 },
+    ]);
+    await refRepo.resolveTargets(repo.id);
+
+    const toolDeps: ToolDeps = { repoId: repo.id, symbolRepo, refRepo };
+    const result = await handleDeps(toolDeps, { symbol: 'App\\Route', depth: 2 });
+
+    // Route at depth 0 shows class_reference to Controller (always shown at depth 0)
+    expect(result).toContain('App\\Controller');
+    // Controller at depth 1 should ALSO follow class_reference to Builder
+    expect(result).toContain('App\\Builder');
+  });
 });

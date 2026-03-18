@@ -122,4 +122,51 @@ describe('cartograph_compare', () => {
     });
     expect(result).toContain('getSubRouteFolder');
   });
+
+  it('shows class_reference targets in compare output', async () => {
+    // Setup: two classes with methods that have class_reference deps
+    const repoRepo = new RepoRepository(pool);
+    const fileRepo = new FileRepository(pool);
+    const symbolRepo = new SymbolRepository(pool);
+    const refRepo = new ReferenceRepository(pool);
+
+    const repo = await repoRepo.findOrCreate('/test/compare-refs', 'test-compare-refs');
+    const f1 = await fileRepo.upsert(repo.id, 'route-a.php', 'php', 'cr1', 30);
+    const f2 = await fileRepo.upsert(repo.id, 'route-b.php', 'php', 'cr2', 30);
+
+    const ids1 = await symbolRepo.replaceFileSymbols(f1.id, [
+      makeClassWithMethods('RouteA', 'App\\RouteA', [
+        { name: 'getBuilderName', line: 10 },
+      ]),
+    ]);
+    const ids2 = await symbolRepo.replaceFileSymbols(f2.id, [
+      makeClassWithMethods('RouteB', 'App\\RouteB', [
+        { name: 'getBuilderName', line: 10 },
+        { name: 'getControllerName', line: 20 },
+      ]),
+    ]);
+
+    // RouteA::getBuilderName → returns BuilderA::class
+    await refRepo.replaceFileReferences(f1.id, ids1, [
+      { sourceQualifiedName: 'App\\RouteA::getBuilderName', targetQualifiedName: 'app\\buildera', kind: 'class_reference', line: 12 },
+    ]);
+    // RouteB::getBuilderName → returns BuilderB::class
+    // RouteB::getControllerName → returns ControllerB::class
+    await refRepo.replaceFileReferences(f2.id, ids2, [
+      { sourceQualifiedName: 'App\\RouteB::getBuilderName', targetQualifiedName: 'app\\builderb', kind: 'class_reference', line: 12 },
+      { sourceQualifiedName: 'App\\RouteB::getControllerName', targetQualifiedName: 'app\\controllerb', kind: 'class_reference', line: 22 },
+    ]);
+
+    const toolDeps: ToolDeps = { repoId: repo.id, symbolRepo, refRepo };
+    const result = await handleCompare(toolDeps, {
+      symbolA: 'App\\RouteA',
+      symbolB: 'App\\RouteB',
+    });
+
+    // Shared method getBuilderName should show both targets
+    expect(result).toContain('app\\buildera');
+    expect(result).toContain('app\\builderb');
+    // Only-in-B method getControllerName should show its target
+    expect(result).toContain('app\\controllerb');
+  });
 });

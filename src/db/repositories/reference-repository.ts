@@ -147,9 +147,13 @@ export class ReferenceRepository {
   }
 
   async findDependencies(symbolId: number): Promise<ReferenceRecord[]> {
+    // Include references from the symbol itself AND its child symbols (methods).
+    // This ensures class-level queries surface ::class refs from methods like
+    // getBuilderName() { return Builder::class; }
     const { rows } = await this.pool.query(
       `SELECT sr.* FROM symbol_references sr
        WHERE sr.source_symbol_id = $1
+          OR sr.source_symbol_id IN (SELECT id FROM symbols WHERE parent_symbol_id = $1)
        ORDER BY sr.line_number`,
       [symbolId]
     );

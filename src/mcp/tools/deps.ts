@@ -37,10 +37,11 @@ export async function handleDeps(deps: ToolDeps, params: DepsParams): Promise<st
 
     const refs = await refRepo.findDependencies(current.symbolId);
 
-    // At depth 0: show all reference kinds. At deeper levels: only call-type refs.
+    // At depth 0: show all reference kinds. At deeper levels: call-type + class_reference.
+    // class_reference covers return Foo::class wiring (Route→Controller→Builder→Model).
     const filteredRefs = current.depth === 0
       ? refs
-      : refs.filter(r => ['static_call', 'self_call', 'instantiation'].includes(r.referenceKind));
+      : refs.filter(r => ['static_call', 'self_call', 'instantiation', 'class_reference'].includes(r.referenceKind));
 
     for (const ref of filteredRefs) {
       if (ref.targetSymbolId && !visited.has(ref.targetSymbolId)) {

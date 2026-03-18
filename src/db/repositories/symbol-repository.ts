@@ -143,8 +143,8 @@ export class SymbolRepository {
       sql += ` AND s.kind = $${params.length}`;
     }
     if (path) {
-      params.push(`${path}%`);
-      sql += ` AND f.path LIKE $${params.length}`;
+      params.push(`%${path}%`);
+      sql += ` AND f.path ILIKE $${params.length}`;
     }
     params.push(limit);
     sql += ` ORDER BY s.qualified_name LIMIT $${params.length}`;
@@ -154,6 +154,20 @@ export class SymbolRepository {
       ...this.toRecord(r),
       filePath: r.file_path as string,
     }));
+  }
+
+  async suggestPaths(repoId: number, pathFragment: string): Promise<string[]> {
+    // Find distinct directory paths containing the fragment, for "did you mean?" suggestions
+    const { rows } = await this.pool.query(
+      `SELECT DISTINCT
+         regexp_replace(path, '/[^/]+$', '') AS dir_path
+       FROM files
+       WHERE repo_id = $1 AND path ILIKE $2
+       ORDER BY dir_path
+       LIMIT 5`,
+      [repoId, `%${pathFragment}%`]
+    );
+    return rows.map((r: Record<string, unknown>) => r.dir_path as string);
   }
 
   async findByFilePath(repoId: number, filePath: string): Promise<SymbolRecord[]> {

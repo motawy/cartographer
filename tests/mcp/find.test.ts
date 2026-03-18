@@ -94,4 +94,26 @@ describe('cartograph_find', () => {
     expect(result).toContain('OrderService');
     expect(result).not.toContain('App\\Models\\User'); // User is in app/Models, not app/Services
   });
+
+  it('matches partial path (substring, not just prefix)', async () => {
+    // "Services" is in the middle of the path, not the start
+    const result = await handleFind(deps, { query: '%', path: 'Services' });
+    expect(result).toContain('UserService');
+    expect(result).toContain('OrderService');
+    expect(result).not.toContain('App\\Models\\User');
+  });
+
+  it('suggests paths when path filter returns 0 results', async () => {
+    const result = await handleFind(deps, { query: 'User', path: 'Nonexistent' });
+    expect(result).toContain('No symbols found');
+    expect(result).toContain('No files match that path fragment');
+  });
+
+  it('suggests similar paths when partial match exists but no symbols match', async () => {
+    // Path exists but query doesn't match any symbols in it
+    const result = await handleFind(deps, { query: 'Nonexistent', path: 'Services' });
+    expect(result).toContain('No symbols found');
+    expect(result).toContain('Did you mean');
+    expect(result).toContain('app/Services');
+  });
 });
