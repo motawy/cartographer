@@ -112,4 +112,58 @@ describe('cartograph_symbol', () => {
     expect(result).toContain('not found');
     expect(result).toContain('cartograph_find');
   });
+
+  it('deep mode shows stack with class_reference wiring', async () => {
+    const repoRepo = new RepoRepository(pool);
+    const fileRepo = new FileRepository(pool);
+    const symbolRepo = new SymbolRepository(pool);
+    const refRepo = new ReferenceRepository(pool);
+
+    const repo = await repoRepo.findOrCreate('/test/deep-mode', 'test-deep');
+    const f1 = await fileRepo.upsert(repo.id, 'route.php', 'php', 'dp1', 30);
+    const f2 = await fileRepo.upsert(repo.id, 'controller.php', 'php', 'dp2', 10);
+    const f3 = await fileRepo.upsert(repo.id, 'base.php', 'php', 'dp3', 50);
+
+    const routeSymbol: ParsedSymbol = {
+      name: 'MyRoute', qualifiedName: 'App\\MyRoute',
+      kind: 'class', visibility: null, lineStart: 1, lineEnd: 30,
+      signature: null, returnType: null, docblock: null, metadata: {},
+      children: [{
+        name: 'getControllerName', qualifiedName: 'App\\MyRoute::getControllerName',
+        kind: 'method', visibility: 'public', lineStart: 10, lineEnd: 13,
+        signature: null, returnType: null, docblock: null, children: [], metadata: {},
+      }],
+    };
+    const ctrlSymbol: ParsedSymbol = {
+      name: 'MyController', qualifiedName: 'App\\MyController',
+      kind: 'class', visibility: null, lineStart: 1, lineEnd: 10,
+      signature: null, returnType: null, docblock: null, children: [], metadata: {},
+    };
+    const baseSymbol: ParsedSymbol = {
+      name: 'BaseRoute', qualifiedName: 'App\\BaseRoute',
+      kind: 'class', visibility: null, lineStart: 1, lineEnd: 50,
+      signature: null, returnType: null, docblock: null, children: [], metadata: {},
+    };
+
+    const ids1 = await symbolRepo.replaceFileSymbols(f1.id, [routeSymbol]);
+    await symbolRepo.replaceFileSymbols(f2.id, [ctrlSymbol]);
+    await symbolRepo.replaceFileSymbols(f3.id, [baseSymbol]);
+
+    await refRepo.replaceFileReferences(f1.id, ids1, [
+      { sourceQualifiedName: 'App\\MyRoute', targetQualifiedName: 'app\\baseroute', kind: 'inheritance', line: 1 },
+      { sourceQualifiedName: 'App\\MyRoute::getControllerName', targetQualifiedName: 'app\\mycontroller', kind: 'class_reference', line: 12 },
+    ]);
+    await refRepo.resolveTargets(repo.id);
+
+    const deepDeps: ToolDeps = { repoId: repo.id, symbolRepo, refRepo };
+    const deepStats: RepoStats = { totalClasses: 3, classesWithInterface: 0, classesWithBaseClass: 1, classesWithTraits: 0 };
+
+    const result = await handleSymbol(deepDeps, deepStats, { name: 'App\\MyRoute', deep: true });
+
+    expect(result).toContain('Stack');
+    expect(result).toContain('Extends');
+    expect(result).toContain('BaseRoute');
+    expect(result).toContain('getControllerName');
+    expect(result).toContain('MyController');
+  });
 });

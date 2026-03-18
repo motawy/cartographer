@@ -91,4 +91,67 @@ describe('cartograph_flow', () => {
     const result = await handleFlow(deps, { symbol: 'Ns\\A', depth: 5 });
     expect(result).toContain('Ns\\E');
   });
+
+  it('traces through parent template methods to child overrides', async () => {
+    // Setup: Route extends BaseRoute. BaseRoute::init calls $this->getControllerName().
+    // Route::getControllerName returns Controller::class.
+    // Flow should trace: Route → Controller (via init() → getControllerName())
+    const repoRepo = new RepoRepository(pool);
+    const fileRepo = new FileRepository(pool);
+    const symbolRepo = new SymbolRepository(pool);
+    const refRepo = new ReferenceRepository(pool);
+
+    const repo = await repoRepo.findOrCreate('/test/template-flow', 'test-tpl');
+    const fBase = await fileRepo.upsert(repo.id, 'baseroute.php', 'php', 'tb1', 50);
+    const fRoute = await fileRepo.upsert(repo.id, 'route.php', 'php', 'tb2', 30);
+    const fCtrl = await fileRepo.upsert(repo.id, 'controller.php', 'php', 'tb3', 10);
+
+    // BaseRoute with init() method that self_calls getControllerName()
+    const baseIds = await symbolRepo.replaceFileSymbols(fBase.id, [{
+      name: 'BaseRoute', qualifiedName: 'App\\BaseRoute', kind: 'class', visibility: null,
+      lineStart: 1, lineEnd: 50, signature: null, returnType: null,
+      docblock: null, metadata: {},
+      children: [{
+        name: 'init', qualifiedName: 'App\\BaseRoute::init', kind: 'method',
+        visibility: 'public', lineStart: 10, lineEnd: 20, signature: null, returnType: null,
+        docblock: null, children: [], metadata: {},
+      }],
+    }]);
+
+    // Route with getControllerName() that returns Controller::class
+    const routeIds = await symbolRepo.replaceFileSymbols(fRoute.id, [{
+      name: 'MyRoute', qualifiedName: 'App\\MyRoute', kind: 'class', visibility: null,
+      lineStart: 1, lineEnd: 30, signature: null, returnType: null,
+      docblock: null, metadata: {},
+      children: [{
+        name: 'getControllerName', qualifiedName: 'App\\MyRoute::getControllerName', kind: 'method',
+        visibility: 'public', lineStart: 10, lineEnd: 13, signature: null, returnType: null,
+        docblock: null, children: [], metadata: {},
+      }],
+    }]);
+
+    await symbolRepo.replaceFileSymbols(fCtrl.id, [{
+      name: 'MyController', qualifiedName: 'App\\MyController', kind: 'class', visibility: null,
+      lineStart: 1, lineEnd: 10, signature: null, returnType: null,
+      docblock: null, children: [], metadata: {},
+    }]);
+
+    // BaseRoute::init self_calls BaseRoute::getControllerName
+    await refRepo.replaceFileReferences(fBase.id, baseIds, [
+      { sourceQualifiedName: 'App\\BaseRoute::init', targetQualifiedName: 'app\\baseroute::getcontrollername', kind: 'self_call', line: 15 },
+    ]);
+
+    // Route inherits BaseRoute, getControllerName has class_reference to Controller
+    await refRepo.replaceFileReferences(fRoute.id, routeIds, [
+      { sourceQualifiedName: 'App\\MyRoute', targetQualifiedName: 'app\\baseroute', kind: 'inheritance', line: 1 },
+      { sourceQualifiedName: 'App\\MyRoute::getControllerName', targetQualifiedName: 'app\\mycontroller', kind: 'class_reference', line: 12 },
+    ]);
+    await refRepo.resolveTargets(repo.id);
+
+    const flowDeps: ToolDeps = { repoId: repo.id, symbolRepo, refRepo };
+    const result = await handleFlow(flowDeps, { symbol: 'App\\MyRoute', depth: 3 });
+
+    // Flow should trace through parent's init() → child's getControllerName() → Controller
+    expect(result).toContain('App\\MyController');
+  });
 });

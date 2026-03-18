@@ -3,6 +3,7 @@ import type { ToolDeps, RepoStats, DependentRow } from '../types.js';
 
 interface SymbolParams {
   name: string;
+  deep?: boolean;
 }
 
 export async function handleSymbol(deps: ToolDeps, stats: RepoStats, params: SymbolParams): Promise<string> {
@@ -46,27 +47,35 @@ export async function handleSymbol(deps: ToolDeps, stats: RepoStats, params: Sym
       if (context) lines.push(`Context: ${context}`);
     }
 
-    lines.push('');
-    if (forwardDeps.length > 0) {
-      lines.push(`### Depends on (${forwardDeps.length})`);
-      for (const dep of forwardDeps) {
-        const targetName = dep.targetSymbolId
-          ? (await symbolRepo.findById(dep.targetSymbolId))?.qualifiedName ?? dep.targetQualifiedName
-          : `${dep.targetQualifiedName} (unresolved)`;
-        const lineRef = dep.lineNumber ? `, line ${dep.lineNumber}` : '';
-        lines.push(`- ${targetName} (${dep.referenceKind}${lineRef})`);
-      }
+    // Deep mode: show full vertical stack for classes
+    if (params.deep && sym.kind === 'class') {
       lines.push('');
-    }
+      await appendDeepView(lines, sym.id, forwardDeps, repoId, symbolRepo, refRepo);
+    } else {
+      lines.push('');
+      if (forwardDeps.length > 0) {
+        lines.push(`### Depends on (${forwardDeps.length})`);
+        for (const dep of forwardDeps) {
+          const targetName = dep.targetSymbolId
+            ? (await symbolRepo.findById(dep.targetSymbolId))?.qualifiedName ?? dep.targetQualifiedName
+            : `${dep.targetQualifiedName} (unresolved)`;
+          const lineRef = dep.lineNumber ? `, line ${dep.lineNumber}` : '';
+          const via = dep.sourceSymbolName && dep.sourceSymbolId !== sym.id
+            ? ` via ${dep.sourceSymbolName}()` : '';
+          lines.push(`- ${targetName} (${dep.referenceKind}${lineRef}${via})`);
+        }
+        lines.push('');
+      }
 
-    // Reverse deps
-    const reverseDeps = (await refRepo.findDependents(sym.id, 1)) as unknown as DependentRow[];
-    if (reverseDeps.length > 0) {
-      lines.push(`### Used by (${reverseDeps.length})`);
-      for (const dep of reverseDeps) {
-        const line = dep.line_number ? `, line ${dep.line_number}` : '';
-        lines.push(`- ${dep.source_qualified_name} (${dep.reference_kind}${line})`);
-        lines.push(`  ${dep.source_file_path}`);
+      // Reverse deps
+      const reverseDeps = (await refRepo.findDependents(sym.id, 1)) as unknown as DependentRow[];
+      if (reverseDeps.length > 0) {
+        lines.push(`### Used by (${reverseDeps.length})`);
+        for (const dep of reverseDeps) {
+          const line = dep.line_number ? `, line ${dep.line_number}` : '';
+          lines.push(`- ${dep.source_qualified_name} (${dep.reference_kind}${line})`);
+          lines.push(`  ${dep.source_file_path}`);
+        }
       }
     }
 
@@ -74,6 +83,87 @@ export async function handleSymbol(deps: ToolDeps, stats: RepoStats, params: Sym
   }
 
   return sections.join('\n\n---\n\n');
+}
+
+async function appendDeepView(
+  lines: string[],
+  symbolId: number,
+  forwardDeps: ReferenceRecord[],
+  repoId: number,
+  symbolRepo: ToolDeps['symbolRepo'],
+  refRepo: ToolDeps['refRepo']
+): Promise<void> {
+  lines.push('### Stack');
+
+  // 1. Inheritance chain
+  const inheritance = forwardDeps.filter(d => d.referenceKind === 'inheritance');
+  if (inheritance.length > 0) {
+    for (const inh of inheritance) {
+      const targetName = inh.targetSymbolId
+        ? (await symbolRepo.findById(inh.targetSymbolId))?.qualifiedName ?? inh.targetQualifiedName
+        : inh.targetQualifiedName;
+      lines.push(`  Extends: ${targetName}`);
+    }
+  }
+
+  // 2. Wiring: class_reference edges from child methods (getControllerName → Controller::class)
+  const classRefs = forwardDeps.filter(d => d.referenceKind === 'class_reference');
+  if (classRefs.length > 0) {
+    for (const ref of classRefs) {
+      const targetName = ref.targetSymbolId
+        ? (await symbolRepo.findById(ref.targetSymbolId))?.qualifiedName ?? ref.targetQualifiedName
+        : ref.targetQualifiedName;
+      const via = ref.sourceSymbolName ? `via ${ref.sourceSymbolName}()` : '';
+      lines.push(`  ${via ? via + ': ' : '→ '}${targetName}`);
+    }
+  }
+
+  // 3. Concrete implementations (who extends this class?)
+  const implementors = (await refRepo.findDependents(symbolId, 1)) as unknown as DependentRow[];
+  const concreteExtenders = implementors.filter(d => d.reference_kind === 'inheritance');
+  if (concreteExtenders.length > 0 && concreteExtenders.length <= 5) {
+    lines.push('');
+    lines.push('### Extended by');
+    for (const ext of concreteExtenders) {
+      lines.push(`  - ${ext.source_qualified_name}`);
+    }
+  } else if (concreteExtenders.length > 5) {
+    lines.push('');
+    lines.push(`### Extended by (${concreteExtenders.length} classes — showing first 5)`);
+    for (const ext of concreteExtenders.slice(0, 5)) {
+      lines.push(`  - ${ext.source_qualified_name}`);
+    }
+  }
+
+  // 4. Follow one level deeper: for each class_reference target, show ITS wiring
+  if (classRefs.length > 0) {
+    lines.push('');
+    lines.push('### Wiring detail (depth 2)');
+    for (const ref of classRefs) {
+      if (!ref.targetSymbolId) continue;
+      const target = await symbolRepo.findById(ref.targetSymbolId);
+      if (!target) continue;
+
+      const targetDeps = await refRepo.findDependencies(target.id);
+      const targetClassRefs = targetDeps.filter(d => d.referenceKind === 'class_reference');
+      const targetInheritance = targetDeps.filter(d => d.referenceKind === 'inheritance');
+
+      const via = ref.sourceSymbolName ? `${ref.sourceSymbolName}()` : '?';
+      const parts: string[] = [];
+      for (const inh of targetInheritance) {
+        parts.push(`extends ${inh.targetQualifiedName}`);
+      }
+      for (const cr of targetClassRefs) {
+        const crVia = cr.sourceSymbolName ? `via ${cr.sourceSymbolName}()` : '';
+        parts.push(`${crVia ? crVia + ': ' : '→ '}${cr.targetQualifiedName}`);
+      }
+
+      lines.push(`  ${via} → ${target.qualifiedName}`);
+      for (const part of parts) {
+        lines.push(`    ${part}`);
+      }
+    }
+  }
 }
 
 function buildConventionsContext(

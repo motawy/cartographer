@@ -72,9 +72,12 @@ export async function createServer(opts: ServerOptions): Promise<McpServer> {
   // --- cartograph_symbol ---
   server.tool(
     'cartograph_symbol',
-    'Look up a class/interface/function and its relationships',
-    { name: z.string().describe('Fully or partially qualified symbol name') },
-    async ({ name }) => wrap(() => handleSymbol(deps, stats, { name }))
+    'Look up a class/interface/function and its relationships. Use deep=true on Route/Controller/Builder classes to see the full vertical stack in one call.',
+    {
+      name: z.string().describe('Fully or partially qualified symbol name'),
+      deep: z.boolean().optional().describe('Show full vertical stack: inheritance, wiring (class_reference), implementors, and depth-2 wiring detail'),
+    },
+    async ({ name, deep }) => wrap(() => handleSymbol(deps, stats, { name, deep }))
   );
 
   // --- cartograph_deps ---
