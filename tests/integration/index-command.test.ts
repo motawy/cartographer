@@ -1,16 +1,10 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
-import pg from 'pg';
+import Database from 'better-sqlite3';
+import { openDatabase } from '../../src/db/connection.js';
+import { runMigrations } from '../../src/db/migrate.js';
 import { IndexPipeline } from '../../src/indexer/pipeline.js';
 import { join } from 'path';
 import type { CartographConfig } from '../../src/types.js';
-
-const TEST_DB = {
-  host: 'localhost',
-  port: 5435,
-  database: 'cartograph_test',
-  user: 'cartograph',
-  password: 'localdev',
-};
 
 const FIXTURES = join(import.meta.dirname, '..', 'fixtures', 'laravel-sample');
 
@@ -18,43 +12,36 @@ function testConfig(): CartographConfig {
   return {
     languages: ['php'],
     exclude: ['vendor/'],
-    database: {
-      host: TEST_DB.host,
-      port: TEST_DB.port,
-      name: TEST_DB.database,
-      user: TEST_DB.user,
-      password: TEST_DB.password,
-    },
+    database: { path: ':memory:' },
   };
 }
 
 describe('Index Pipeline (Integration)', () => {
-  let pool: pg.Pool;
+  let db: Database.Database;
 
   beforeAll(() => {
-    pool = new pg.Pool(TEST_DB);
+    db = openDatabase({ path: ':memory:' });
+    runMigrations(db);
   });
 
-  afterAll(async () => {
-    await pool.end();
+  afterAll(() => {
+    db.close();
   });
 
-  beforeEach(async () => {
-    await pool.query('DELETE FROM symbol_references');
-    await pool.query('DELETE FROM symbols');
-    await pool.query('DELETE FROM files');
-    await pool.query('DELETE FROM repos');
+  beforeEach(() => {
+    db.exec('DELETE FROM symbol_references');
+    db.exec('DELETE FROM symbols');
+    db.exec('DELETE FROM files');
+    db.exec('DELETE FROM repos');
   });
 
-  it('indexes fixture project and stores correct files', async () => {
-    const pipeline = new IndexPipeline(pool);
-    await pipeline.run(FIXTURES, testConfig());
+  it('indexes fixture project and stores correct files', () => {
+    const pipeline = new IndexPipeline(db);
+    pipeline.run(FIXTURES, testConfig());
 
-    const { rows: files } = await pool.query(
-      'SELECT path FROM files ORDER BY path'
-    );
+    const files = db.prepare('SELECT path FROM files ORDER BY path').all() as { path: string }[];
     expect(files).toHaveLength(6);
-    expect(files.map((f: { path: string }) => f.path)).toEqual([
+    expect(files.map((f) => f.path)).toEqual([
       'app/Contracts/UserServiceInterface.php',
       'app/Http/Controllers/UserController.php',
       'app/Models/User.php',
@@ -64,104 +51,101 @@ describe('Index Pipeline (Integration)', () => {
     ]);
   });
 
-  it('stores symbols with correct qualified names and kinds', async () => {
-    const pipeline = new IndexPipeline(pool);
-    await pipeline.run(FIXTURES, testConfig());
+  it('stores symbols with correct qualified names and kinds', () => {
+    const pipeline = new IndexPipeline(db);
+    pipeline.run(FIXTURES, testConfig());
 
     // Verify class
-    const { rows: userClass } = await pool.query(
-      "SELECT * FROM symbols WHERE qualified_name = $1",
-      ['App\\Models\\User']
-    );
+    const userClass = db.prepare(
+      "SELECT * FROM symbols WHERE qualified_name = ?"
+    ).all('App\\Models\\User') as Record<string, unknown>[];
     expect(userClass).toHaveLength(1);
     expect(userClass[0].kind).toBe('class');
 
     // Verify interface
-    const { rows: iface } = await pool.query(
-      "SELECT * FROM symbols WHERE qualified_name = $1",
-      ['App\\Contracts\\UserServiceInterface']
-    );
+    const iface = db.prepare(
+      "SELECT * FROM symbols WHERE qualified_name = ?"
+    ).all('App\\Contracts\\UserServiceInterface') as Record<string, unknown>[];
     expect(iface).toHaveLength(1);
     expect(iface[0].kind).toBe('interface');
 
     // Verify trait
-    const { rows: trait } = await pool.query(
-      "SELECT * FROM symbols WHERE qualified_name = $1",
-      ['App\\Traits\\HasTimestamps']
-    );
+    const trait = db.prepare(
+      "SELECT * FROM symbols WHERE qualified_name = ?"
+    ).all('App\\Traits\\HasTimestamps') as Record<string, unknown>[];
     expect(trait).toHaveLength(1);
     expect(trait[0].kind).toBe('trait');
 
     // Verify method with parent relationship
-    const { rows: findById } = await pool.query(
-      "SELECT * FROM symbols WHERE qualified_name = $1",
-      ['App\\Services\\UserService::findById']
-    );
+    const findById = db.prepare(
+      "SELECT * FROM symbols WHERE qualified_name = ?"
+    ).all('App\\Services\\UserService::findById') as Record<string, unknown>[];
     expect(findById).toHaveLength(1);
     expect(findById[0].kind).toBe('method');
     expect(findById[0].visibility).toBe('public');
 
-    const { rows: serviceClass } = await pool.query(
-      "SELECT * FROM symbols WHERE qualified_name = $1",
-      ['App\\Services\\UserService']
-    );
+    const serviceClass = db.prepare(
+      "SELECT * FROM symbols WHERE qualified_name = ?"
+    ).all('App\\Services\\UserService') as Record<string, unknown>[];
     expect(findById[0].parent_symbol_id).toBe(serviceClass[0].id);
   });
 
-  it('stores constructor promoted properties', async () => {
-    const pipeline = new IndexPipeline(pool);
-    await pipeline.run(FIXTURES, testConfig());
+  it('stores constructor promoted properties', () => {
+    const pipeline = new IndexPipeline(db);
+    pipeline.run(FIXTURES, testConfig());
 
-    const { rows } = await pool.query(
-      "SELECT * FROM symbols WHERE qualified_name = $1",
-      ['App\\Http\\Controllers\\UserController::$userService']
-    );
+    const rows = db.prepare(
+      "SELECT * FROM symbols WHERE qualified_name = ?"
+    ).all('App\\Http\\Controllers\\UserController::$userService') as Record<string, unknown>[];
     expect(rows).toHaveLength(1);
     expect(rows[0].kind).toBe('property');
     expect(rows[0].visibility).toBe('private');
-    expect(rows[0].metadata).toEqual(
+    const metadata = typeof rows[0].metadata === 'string'
+      ? JSON.parse(rows[0].metadata as string)
+      : rows[0].metadata;
+    expect(metadata).toEqual(
       expect.objectContaining({ promoted: true, readonly: true })
     );
   });
 
-  it('is idempotent — re-indexing produces same symbol count', async () => {
-    const pipeline = new IndexPipeline(pool);
+  it('is idempotent — re-indexing produces same symbol count', () => {
+    const pipeline = new IndexPipeline(db);
     const config = testConfig();
 
-    await pipeline.run(FIXTURES, config);
-    const { rows: first } = await pool.query(
-      'SELECT COUNT(*)::int AS count FROM symbols'
-    );
+    pipeline.run(FIXTURES, config);
+    const first = db.prepare(
+      'SELECT COUNT(*) AS count FROM symbols'
+    ).get() as { count: number };
 
-    await pipeline.run(FIXTURES, config);
-    const { rows: second } = await pool.query(
-      'SELECT COUNT(*)::int AS count FROM symbols'
-    );
+    pipeline.run(FIXTURES, config);
+    const second = db.prepare(
+      'SELECT COUNT(*) AS count FROM symbols'
+    ).get() as { count: number };
 
-    expect(first[0].count).toBe(second[0].count);
+    expect(first.count).toBe(second.count);
   });
 
-  it('second run detects 0 changes for unchanged files', async () => {
-    const pipeline = new IndexPipeline(pool);
+  it('second run detects 0 changes for unchanged files', () => {
+    const pipeline = new IndexPipeline(db);
     const config = testConfig();
 
-    await pipeline.run(FIXTURES, config);
-    await pipeline.run(FIXTURES, config);
+    pipeline.run(FIXTURES, config);
+    pipeline.run(FIXTURES, config);
 
-    const { rows } = await pool.query(
-      'SELECT COUNT(*)::int AS count FROM symbols'
-    );
-    expect(rows[0].count).toBeGreaterThan(0);
+    const row = db.prepare(
+      'SELECT COUNT(*) AS count FROM symbols'
+    ).get() as { count: number };
+    expect(row.count).toBeGreaterThan(0);
   });
 
-  it('stores all expected symbol kinds', async () => {
-    const pipeline = new IndexPipeline(pool);
-    await pipeline.run(FIXTURES, testConfig());
+  it('stores all expected symbol kinds', () => {
+    const pipeline = new IndexPipeline(db);
+    pipeline.run(FIXTURES, testConfig());
 
-    const { rows: kinds } = await pool.query(
+    const kinds = db.prepare(
       'SELECT DISTINCT kind FROM symbols ORDER BY kind'
-    );
-    const kindList = kinds.map((r: { kind: string }) => r.kind);
+    ).all() as { kind: string }[];
+    const kindList = kinds.map((r) => r.kind);
 
     expect(kindList).toContain('class');
     expect(kindList).toContain('interface');
@@ -171,17 +155,16 @@ describe('Index Pipeline (Integration)', () => {
     expect(kindList).toContain('constant');
   });
 
-  it('stores file metadata correctly', async () => {
-    const pipeline = new IndexPipeline(pool);
-    await pipeline.run(FIXTURES, testConfig());
+  it('stores file metadata correctly', () => {
+    const pipeline = new IndexPipeline(db);
+    pipeline.run(FIXTURES, testConfig());
 
-    const { rows } = await pool.query(
-      "SELECT * FROM files WHERE path = $1",
-      ['app/Models/User.php']
-    );
+    const rows = db.prepare(
+      "SELECT * FROM files WHERE path = ?"
+    ).all('app/Models/User.php') as Record<string, unknown>[];
     expect(rows).toHaveLength(1);
     expect(rows[0].language).toBe('php');
     expect(rows[0].hash).toMatch(/^[a-f0-9]{64}$/);
-    expect(rows[0].lines_of_code).toBeGreaterThan(0);
+    expect((rows[0].lines_of_code as number)).toBeGreaterThan(0);
   });
 });

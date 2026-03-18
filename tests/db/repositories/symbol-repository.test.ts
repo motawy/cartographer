@@ -1,45 +1,40 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
-import pg from 'pg';
+import Database from 'better-sqlite3';
+import { openDatabase } from '../../../src/db/connection.js';
+import { runMigrations } from '../../../src/db/migrate.js';
 import { RepoRepository } from '../../../src/db/repositories/repo-repository.js';
 import { FileRepository } from '../../../src/db/repositories/file-repository.js';
 import { SymbolRepository } from '../../../src/db/repositories/symbol-repository.js';
 import type { ParsedSymbol } from '../../../src/types.js';
 
-const TEST_POOL_CONFIG = {
-  host: 'localhost',
-  port: 5435,
-  database: 'cartograph_test',
-  user: 'cartograph',
-  password: 'localdev',
-};
-
 describe('SymbolRepository', () => {
-  let pool: pg.Pool;
+  let db: Database.Database;
   let repoRepo: RepoRepository;
   let fileRepo: FileRepository;
   let symbolRepo: SymbolRepository;
 
   beforeAll(() => {
-    pool = new pg.Pool(TEST_POOL_CONFIG);
-    repoRepo = new RepoRepository(pool);
-    fileRepo = new FileRepository(pool);
-    symbolRepo = new SymbolRepository(pool);
+    db = openDatabase({ path: ':memory:' });
+    runMigrations(db);
+    repoRepo = new RepoRepository(db);
+    fileRepo = new FileRepository(db);
+    symbolRepo = new SymbolRepository(db);
   });
 
-  afterAll(async () => {
-    await pool.end();
+  afterAll(() => {
+    db.close();
   });
 
-  beforeEach(async () => {
-    await pool.query('DELETE FROM symbol_references');
-    await pool.query('DELETE FROM symbols');
-    await pool.query('DELETE FROM files');
-    await pool.query('DELETE FROM repos');
+  beforeEach(() => {
+    db.exec('DELETE FROM symbol_references');
+    db.exec('DELETE FROM symbols');
+    db.exec('DELETE FROM files');
+    db.exec('DELETE FROM repos');
   });
 
-  it('stores and retrieves symbols with parent-child relationships', async () => {
-    const repo = await repoRepo.findOrCreate('/test/repo', 'test-repo');
-    const file = await fileRepo.upsert(
+  it('stores and retrieves symbols with parent-child relationships', () => {
+    const repo = repoRepo.findOrCreate('/test/repo', 'test-repo');
+    const file = fileRepo.upsert(
       repo.id,
       'app/Services/UserService.php',
       'php',
@@ -75,9 +70,9 @@ describe('SymbolRepository', () => {
       metadata: {},
     };
 
-    await symbolRepo.replaceFileSymbols(file.id, [classSymbol]);
+    symbolRepo.replaceFileSymbols(file.id, [classSymbol]);
 
-    const symbols = await symbolRepo.findByFile(file.id);
+    const symbols = symbolRepo.findByFile(file.id);
     expect(symbols).toHaveLength(2); // class + method
 
     const cls = symbols.find((s) => s.kind === 'class');
@@ -95,9 +90,9 @@ describe('SymbolRepository', () => {
     expect(method?.signature).toBe('findById(int $id): ?User');
   });
 
-  it('replaceFileSymbols is idempotent', async () => {
-    const repo = await repoRepo.findOrCreate('/test/repo', 'test-repo');
-    const file = await fileRepo.upsert(repo.id, 'test.php', 'php', 'hash1', 10);
+  it('replaceFileSymbols is idempotent', () => {
+    const repo = repoRepo.findOrCreate('/test/repo', 'test-repo');
+    const file = fileRepo.upsert(repo.id, 'test.php', 'php', 'hash1', 10);
 
     const symbols: ParsedSymbol[] = [
       {
@@ -115,19 +110,19 @@ describe('SymbolRepository', () => {
       },
     ];
 
-    await symbolRepo.replaceFileSymbols(file.id, symbols);
-    await symbolRepo.replaceFileSymbols(file.id, symbols);
+    symbolRepo.replaceFileSymbols(file.id, symbols);
+    symbolRepo.replaceFileSymbols(file.id, symbols);
 
-    const result = await symbolRepo.findByFile(file.id);
+    const result = symbolRepo.findByFile(file.id);
     expect(result).toHaveLength(1);
   });
 
-  it('countByRepo returns total symbols across all files', async () => {
-    const repo = await repoRepo.findOrCreate('/test/repo', 'test-repo');
-    const f1 = await fileRepo.upsert(repo.id, 'a.php', 'php', 'h1', 10);
-    const f2 = await fileRepo.upsert(repo.id, 'b.php', 'php', 'h2', 10);
+  it('countByRepo returns total symbols across all files', () => {
+    const repo = repoRepo.findOrCreate('/test/repo', 'test-repo');
+    const f1 = fileRepo.upsert(repo.id, 'a.php', 'php', 'h1', 10);
+    const f2 = fileRepo.upsert(repo.id, 'b.php', 'php', 'h2', 10);
 
-    await symbolRepo.replaceFileSymbols(f1.id, [
+    symbolRepo.replaceFileSymbols(f1.id, [
       {
         name: 'A',
         qualifiedName: 'A',
@@ -142,7 +137,7 @@ describe('SymbolRepository', () => {
         metadata: {},
       },
     ]);
-    await symbolRepo.replaceFileSymbols(f2.id, [
+    symbolRepo.replaceFileSymbols(f2.id, [
       {
         name: 'B',
         qualifiedName: 'B',
@@ -158,15 +153,15 @@ describe('SymbolRepository', () => {
       },
     ]);
 
-    const count = await symbolRepo.countByRepo(repo.id);
+    const count = symbolRepo.countByRepo(repo.id);
     expect(count).toBe(2);
   });
 
-  it('stores and retrieves metadata as JSON', async () => {
-    const repo = await repoRepo.findOrCreate('/test/repo', 'test-repo');
-    const file = await fileRepo.upsert(repo.id, 'c.php', 'php', 'h3', 10);
+  it('stores and retrieves metadata as JSON', () => {
+    const repo = repoRepo.findOrCreate('/test/repo', 'test-repo');
+    const file = fileRepo.upsert(repo.id, 'c.php', 'php', 'h3', 10);
 
-    await symbolRepo.replaceFileSymbols(file.id, [
+    symbolRepo.replaceFileSymbols(file.id, [
       {
         name: 'Bar',
         qualifiedName: 'Bar',
@@ -182,7 +177,7 @@ describe('SymbolRepository', () => {
       },
     ]);
 
-    const symbols = await symbolRepo.findByFile(file.id);
+    const symbols = symbolRepo.findByFile(file.id);
     expect(symbols[0].metadata.extends).toBe('Foo');
     expect(symbols[0].metadata.implements).toEqual(['Baz', 'Qux']);
   });

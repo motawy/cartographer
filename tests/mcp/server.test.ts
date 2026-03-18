@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import pg from 'pg';
+import Database from 'better-sqlite3';
+import { openDatabase } from '../../src/db/connection.js';
+import { runMigrations } from '../../src/db/migrate.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { RepoRepository } from '../../src/db/repositories/repo-repository.js';
@@ -8,41 +10,32 @@ import { SymbolRepository } from '../../src/db/repositories/symbol-repository.js
 import { createServer } from '../../src/mcp/server.js';
 import type { ParsedSymbol } from '../../src/types.js';
 
-const TEST_DB = {
-  host: 'localhost', port: 5435,
-  database: 'cartograph_test', user: 'cartograph', password: 'localdev',
-};
-
 describe('MCP Server Integration', () => {
-  let pool: pg.Pool;
+  let db: Database.Database;
   let client: Client;
   let repoId: number;
 
   beforeAll(async () => {
-    pool = new pg.Pool(TEST_DB);
+    db = openDatabase({ path: ':memory:' });
+    runMigrations(db);
 
-    await pool.query('DELETE FROM symbol_references');
-    await pool.query('DELETE FROM symbols');
-    await pool.query('DELETE FROM files');
-    await pool.query('DELETE FROM repos');
+    const repoRepo = new RepoRepository(db);
+    const fileRepo = new FileRepository(db);
+    const symbolRepo = new SymbolRepository(db);
 
-    const repoRepo = new RepoRepository(pool);
-    const fileRepo = new FileRepository(pool);
-    const symbolRepo = new SymbolRepository(pool);
-
-    const repo = await repoRepo.findOrCreate('/test/repo', 'test');
+    const repo = repoRepo.findOrCreate('/test/repo', 'test');
     repoId = repo.id;
 
-    const f1 = await fileRepo.upsert(repoId, 'app/Foo.php', 'php', 'h1', 10);
+    const f1 = fileRepo.upsert(repoId, 'app/Foo.php', 'php', 'h1', 10);
     const sym: ParsedSymbol = {
       name: 'Foo', qualifiedName: 'App\\Foo',
       kind: 'class', visibility: null, lineStart: 1, lineEnd: 10,
       signature: null, returnType: null, docblock: null, children: [], metadata: {},
     };
-    await symbolRepo.replaceFileSymbols(f1.id, [sym]);
+    symbolRepo.replaceFileSymbols(f1.id, [sym]);
 
     // Create server + in-memory transport for testing
-    const server = await createServer({ pool, repoId });
+    const server = createServer({ db, repoId });
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
 
     client = new Client({ name: 'test-client', version: '0.1.0' });
@@ -52,7 +45,7 @@ describe('MCP Server Integration', () => {
 
   afterAll(async () => {
     await client.close();
-    await pool.end();
+    db.close();
   });
 
   it('lists all 8 tools', async () => {

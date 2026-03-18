@@ -12,9 +12,7 @@ export function handleFind(deps: ToolDeps, params: FindParams): string {
   const limit = Math.max(1, Math.min(params.limit ?? 20, 50));
 
   // Convert * to % for SQL, wrap bare queries in %...%
-  // Escape backslashes first so PHP namespace separators (App\Service)
-  // are not interpreted as SQL LIKE escape sequences.
-  let pattern = params.query.replace(/\\/g, '\\\\');
+  let pattern = params.query;
   if (pattern.includes('*')) {
     pattern = pattern.replace(/\*/g, '%');
   }

@@ -11,9 +11,7 @@ export function handleSymbol(deps: ToolDeps, stats: RepoStats, params: SymbolPar
   const { name } = params;
 
   // Search with suffix pattern — works for both exact qualified names and short names.
-  // Escape backslashes for LIKE pattern matching.
-  const escapedName = name.replace(/\\/g, '\\\\');
-  const searchResults = symbolRepo.search(repoId, `%${escapedName}`, undefined, 10);
+  const searchResults = symbolRepo.search(repoId, `%${name}`, undefined, 10);
   let matches: { symbol: (typeof searchResults)[0]; filePath: string }[] = [];
 
   if (searchResults.length === 0) {
