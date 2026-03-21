@@ -28,6 +28,7 @@ const TEST_FRAMEWORK_PATTERNS = [
 ];
 
 const PHP_BUILTIN_CLASSES = new Set([
+  'arithmeticerror',
   'arrayaccess',
   'arrayiterator',
   'arrayobject',
@@ -40,9 +41,12 @@ const PHP_BUILTIN_CLASSES = new Set([
   'dateinterval',
   'datetime',
   'datetimeimmutable',
+  'datetimeinterface',
   'datetimezone',
+  'dateperiod',
   'directory',
   'directoryiterator',
+  'divisionbyzeroerror',
   'domainexception',
   'domattr',
   'domcdatasection',
@@ -62,27 +66,35 @@ const PHP_BUILTIN_CLASSES = new Set([
   'domtext',
   'domxpath',
   'emptyiterator',
+  'error',
+  'errorexception',
   'exception',
   'filteriterator',
   'filesystemiterator',
   'globiterator',
   'generator',
   'imagick',
+  'imagickdraw',
   'imagickexception',
+  'imagickpixel',
   'invalidargumentexception',
   'iterator',
   'iteratoraggregate',
   'iteratoriterator',
   'jsonexception',
   'jsonserializable',
+  'lengthexception',
   'limititerator',
   'logicexception',
   'multipleiterator',
   'norewinditerator',
   'outofboundsexception',
+  'outofrangeexception',
   'oauthexception',
   'outeriterator',
+  'overflowexception',
   'pdo',
+  'pdostatement',
   'redis',
   'redisarray',
   'rediscluster',
@@ -95,8 +107,10 @@ const PHP_BUILTIN_CLASSES = new Set([
   'reflection',
   'reflectionclass',
   'reflectionexception',
+  'reflectionfunction',
   'reflectionmethod',
   'reflectionobject',
+  'reflectionparameter',
   'reflectionproperty',
   'regexiterator',
   'runtimeexception',
@@ -110,15 +124,90 @@ const PHP_BUILTIN_CLASSES = new Set([
   'soapvar',
   'simplexmlelement',
   'splfileinfo',
+  'splfileobject',
   'splobjectstorage',
   'spltempfileobject',
   'stdclass',
   'stringable',
   'throwable',
+  'tidy',
   'traversable',
-  'unitenum',
+  'typeerror',
+  'underflowexception',
   'unexpectedvalueexception',
+  'unitenum',
+  'valueerror',
+  'xmlreader',
+  'xmlwriter',
+  'xsltprocessor',
   'ziparchive',
+]);
+
+// Vendor namespace prefixes that may coincidentally match internal prefix names
+// or that aren't caught by the internalPrefixes heuristic.
+const VENDOR_NAMESPACE_PREFIXES = new Set([
+  'aws',
+  'barryvdh',
+  'carbon',
+  'ddtrace',
+  'doctrine',
+  'ezcgraph',
+  'faker',
+  'fakerphp',
+  'firebase',
+  'google',
+  'growthbook',
+  'guzzlehttp',
+  'illuminate',
+  'intervention',
+  'jumbojett',
+  'laravel',
+  'league',
+  'maatwebsite',
+  'microsoft',
+  'monolog',
+  'ndm',
+  'negotiation',
+  'nesbot',
+  'nette',
+  'nikic',
+  'psr',
+  'psr7middlewares',
+  'phpseclib',
+  'quickbooksonline',
+  'ramsey',
+  'respect',
+  'setasign',
+  'simplejwt',
+  'slim',
+  'spatie',
+  'square',
+  'stripe',
+  'swagger',
+  'swagflow',
+  'symfony',
+  'twig',
+  'vlucas',
+  'webmozart',
+  'zipstream',
+  'zpt',
+]);
+
+// Global (no-namespace) classes from third-party libraries
+const VENDOR_GLOBAL_CLASSES = new Set([
+  'font_metrics',
+  'pdfstyle',
+  'fpdi',
+  'tcpdf',
+  'dompdf',
+  'ezcgrapharraydataset',
+  'ezcgraphrenderer3d',
+  'ezcgraphpiechart',
+  'ezcgraphhorizontalbarchart',
+  'ezcgraphbarchart',
+  'transformdocadvopenoffice',
+  'transformdocadvlibreoffice',
+  'beforevalidexception',
 ]);
 
 const STATIC_SELF_CLASSES = new Set(['parent', 'self', 'static']);
@@ -204,6 +293,17 @@ function classifyUnresolvedReference(
     return 'test_only';
   }
 
+  // Known vendor namespace prefixes (catches libs that might share a prefix
+  // with internal code, e.g. 'info', 'log')
+  if (prefix && VENDOR_NAMESPACE_PREFIXES.has(prefix)) {
+    return 'external_vendor';
+  }
+
+  // Known vendor global classes (no namespace)
+  if (!prefix && VENDOR_GLOBAL_CLASSES.has(classPart)) {
+    return 'external_vendor';
+  }
+
   if (prefix && !internalPrefixes.has(prefix)) {
     return 'external_vendor';
   }
@@ -240,12 +340,34 @@ function isPhpBuiltin(
   classLeaf: string,
   prefix: string | null
 ): boolean {
+  // Global builtin: e.g. "datetime", "exception"
   if (!prefix && PHP_BUILTIN_CLASSES.has(classLeaf)) {
     return true;
   }
 
+  // PDO constants: e.g. "pdo::fetch_assoc"
   if (!prefix && target.startsWith('pdo::')) {
     return true;
+  }
+
+  // Namespace-prefixed builtin: e.g. "simpro\core\controller\gantt\datetime"
+  // This happens when code uses `new DateTime()` without a `use` statement
+  // inside a namespaced file — the parser prepends the current namespace.
+  if (prefix && PHP_BUILTIN_CLASSES.has(classLeaf)) {
+    return true;
+  }
+
+  // Namespace-prefixed builtin static calls/constants:
+  // e.g. "simpro\core\...\datetime::createfromformat"
+  if (prefix) {
+    const scopeIdx = target.indexOf('::');
+    if (scopeIdx > 0) {
+      const classPart = target.substring(0, scopeIdx);
+      const leaf = classPart.substring(classPart.lastIndexOf('\\') + 1);
+      if (PHP_BUILTIN_CLASSES.has(leaf)) {
+        return true;
+      }
+    }
   }
 
   return false;
@@ -254,3 +376,4 @@ function isPhpBuiltin(
 function matchesAny(value: string, patterns: RegExp[]): boolean {
   return patterns.some((pattern) => pattern.test(value));
 }
+
