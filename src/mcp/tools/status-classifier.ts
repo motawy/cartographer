@@ -28,37 +28,95 @@ const TEST_FRAMEWORK_PATTERNS = [
 ];
 
 const PHP_BUILTIN_CLASSES = new Set([
+  'arrayaccess',
+  'arrayiterator',
   'arrayobject',
+  'backedenum',
   'badmethodcallexception',
+  'callbackfilteriterator',
+  'cachingiterator',
   'closure',
+  'countable',
   'dateinterval',
   'datetime',
   'datetimeimmutable',
   'datetimezone',
+  'directory',
   'directoryiterator',
   'domainexception',
+  'domattr',
+  'domcdatasection',
+  'domcharacterdata',
+  'domcomment',
   'domdocument',
+  'domelement',
+  'domentity',
+  'domentityreference',
+  'domexception',
+  'domimplementation',
+  'domnamednodemap',
+  'domnode',
+  'domnodelist',
+  'domnotation',
+  'domprocessinginstruction',
+  'domtext',
   'domxpath',
+  'emptyiterator',
   'exception',
+  'filteriterator',
   'filesystemiterator',
+  'globiterator',
   'generator',
+  'imagick',
+  'imagickexception',
   'invalidargumentexception',
+  'iterator',
+  'iteratoraggregate',
+  'iteratoriterator',
   'jsonexception',
+  'jsonserializable',
+  'limititerator',
   'logicexception',
+  'multipleiterator',
+  'norewinditerator',
   'outofboundsexception',
   'oauthexception',
+  'outeriterator',
   'pdo',
+  'redis',
+  'redisarray',
+  'rediscluster',
+  'redissentinel',
+  'recursivearrayiterator',
+  'recursivedirectoryiterator',
+  'recursivefilteriterator',
+  'recursiveiterator',
+  'recursiveiteratoriterator',
+  'reflection',
   'reflectionclass',
+  'reflectionexception',
   'reflectionmethod',
   'reflectionobject',
   'reflectionproperty',
+  'regexiterator',
   'runtimeexception',
+  'seekableiterator',
+  'serializable',
+  'soapclient',
+  'soapfault',
+  'soapheader',
+  'soapparam',
+  'soapserver',
+  'soapvar',
   'simplexmlelement',
   'splfileinfo',
+  'splobjectstorage',
   'spltempfileobject',
   'stdclass',
   'stringable',
   'throwable',
+  'traversable',
+  'unitenum',
   'unexpectedvalueexception',
   'ziparchive',
 ]);
@@ -123,6 +181,7 @@ function classifyUnresolvedReference(
 ): UnresolvedCategory {
   const target = row.targetQualifiedName.toLowerCase();
   const classPart = extractClassPart(target);
+  const classLeaf = extractLeafName(classPart);
   const prefix = extractPrefix(target);
 
   if (row.sourcePath.startsWith('cache/')) {
@@ -133,11 +192,11 @@ function classifyUnresolvedReference(
     return 'test_framework';
   }
 
-  if (STATIC_SELF_CLASSES.has(classPart)) {
+  if (STATIC_SELF_CLASSES.has(classLeaf)) {
     return 'static_self';
   }
 
-  if (isPhpBuiltin(target, classPart)) {
+  if (isPhpBuiltin(target, classLeaf, prefix)) {
     return 'php_builtin';
   }
 
@@ -165,18 +224,27 @@ function extractClassPart(target: string): string {
   return scopeIdx === -1 ? target : target.substring(0, scopeIdx);
 }
 
+function extractLeafName(classPart: string): string {
+  const backslashIdx = classPart.lastIndexOf('\\');
+  return backslashIdx === -1 ? classPart : classPart.substring(backslashIdx + 1);
+}
+
 function extractPrefix(target: string): string | null {
   const backslashIdx = target.indexOf('\\');
   if (backslashIdx <= 0) return null;
   return target.substring(0, backslashIdx);
 }
 
-function isPhpBuiltin(target: string, classPart: string): boolean {
-  if (PHP_BUILTIN_CLASSES.has(classPart)) {
+function isPhpBuiltin(
+  target: string,
+  classLeaf: string,
+  prefix: string | null
+): boolean {
+  if (!prefix && PHP_BUILTIN_CLASSES.has(classLeaf)) {
     return true;
   }
 
-  if (target.startsWith('pdo::')) {
+  if (!prefix && target.startsWith('pdo::')) {
     return true;
   }
 

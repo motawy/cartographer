@@ -210,6 +210,23 @@ describe('ReferenceExtractor', () => {
       expect(insts).toHaveLength(1);
       expect(insts[0].targetQualifiedName).toBe('app\\services\\datetime');
     });
+
+    it('skips new self(), new static(), and new parent()', () => {
+      const refs = parseAndExtract(`<?php
+        namespace App\\Services;
+        class BaseFactory {}
+        class UserService extends BaseFactory {
+            public function init(): void {
+                new self();
+                new static();
+                new parent();
+            }
+        }
+      `);
+
+      const insts = refs.filter(r => r.kind === 'instantiation');
+      expect(insts).toHaveLength(0);
+    });
   });
 
   describe('static calls', () => {

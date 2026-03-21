@@ -264,7 +264,7 @@ function walkForReferences(
     for (let i = 0; i < node.childCount; i++) {
       const child = node.child(i)!;
       const name = extractNameFromNode(child);
-      if (name && name !== 'new') {
+      if (name && name !== 'new' && !isSelfReference(name)) {
         refs.push({
           sourceQualifiedName: sourceQN,
           targetQualifiedName: resolveTypeName(name, context),
