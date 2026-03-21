@@ -5,6 +5,7 @@ import { join, extname, resolve } from 'path';
 import ignore from 'ignore';
 import fg from 'fast-glob';
 import type { AdditionalSourceConfig, DiscoveredFile, CartographConfig } from '../types.js';
+import { normalizeSourceLabel } from '../utils/indexed-path.js';
 
 const LANGUAGE_EXTENSIONS: Record<string, string> = {
   '.php': 'php',
@@ -160,18 +161,4 @@ function buildDiscoveryRoots(
   }
 
   return roots;
-}
-
-function normalizeSourceLabel(label: string): string {
-  const normalized = label
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9._-]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-
-  if (!normalized) {
-    throw new Error(`Invalid additional source label: "${label}"`);
-  }
-
-  return normalized;
 }

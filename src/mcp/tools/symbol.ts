@@ -15,6 +15,12 @@ export function handleSymbol(deps: ToolDeps, stats: RepoStats, params: SymbolPar
   let matches: { symbol: (typeof searchResults)[0]; filePath: string }[] = [];
 
   if (searchResults.length === 0) {
+    const suggestions = symbolRepo.suggestSymbols(repoId, name);
+    if (suggestions.length > 0) {
+      return `Symbol not found: "${name}". Use cartograph_find to search.\n\nDid you mean:\n${suggestions.map((suggestion) =>
+        `- ${suggestion.qualifiedName ?? suggestion.name} (${suggestion.kind}) — ${suggestion.filePath}`
+      ).join('\n')}`;
+    }
     return `Symbol not found: "${name}". Use cartograph_find to search.`;
   }
 

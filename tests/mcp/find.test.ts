@@ -80,6 +80,12 @@ describe('cartograph_find', () => {
     expect(result).toContain('No symbols found');
   });
 
+  it('suggests similar symbols on zero results', () => {
+    const result = handleFind(deps, { query: 'UserServce' });
+    expect(result).toContain('Did you mean one of these symbols?');
+    expect(result).toContain('App\\Services\\UserService');
+  });
+
   it('filters by file path', () => {
     const result = handleFind(deps, { query: '%', path: 'app/Services' });
     expect(result).toContain('UserService');

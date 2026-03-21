@@ -12,6 +12,8 @@ import { createTableCommand } from './table.js';
 import { createSchemaCommand } from './schema.js';
 import { createTableGraphCommand } from './table-graph.js';
 import { createSchemaImportCommand } from './schema-import.js';
+import { createSearchContentCommand } from './search-content.js';
+import { createCompareManyCommand } from './compare-many.js';
 
 const program = new Command();
 
@@ -31,6 +33,8 @@ program.addCommand(createSchemaCommand());
 program.addCommand(createTableCommand());
 program.addCommand(createTableGraphCommand());
 program.addCommand(createSchemaImportCommand());
+program.addCommand(createSearchContentCommand());
+program.addCommand(createCompareManyCommand());
 program.addCommand(createServeCommand());
 
 program.parse();

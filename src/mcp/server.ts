@@ -1,6 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type Database from 'better-sqlite3';
+import { FileRepository } from '../db/repositories/file-repository.js';
 import { SymbolRepository } from '../db/repositories/symbol-repository.js';
 import { ReferenceRepository } from '../db/repositories/reference-repository.js';
 import { DbSchemaRepository } from '../db/repositories/db-schema-repository.js';
@@ -12,10 +13,12 @@ import { handleFlow } from './tools/flow.js';
 import { handleDependents } from './tools/dependents.js';
 import { handleBlastRadius } from './tools/blast-radius.js';
 import { handleCompare } from './tools/compare.js';
+import { handleCompareMany } from './tools/compare-many.js';
 import { handleStatus } from './tools/status.js';
 import { handleSchema } from './tools/schema.js';
 import { handleTable } from './tools/table.js';
 import { handleTableGraph } from './tools/table-graph.js';
+import { handleSearchContent } from './tools/search-content.js';
 
 interface ServerOptions {
   db: Database.Database;
@@ -27,10 +30,12 @@ export function createServer(opts: ServerOptions): McpServer {
   const symbolRepo = new SymbolRepository(opts.db);
   const refRepo = new ReferenceRepository(opts.db);
   const schemaRepo = new DbSchemaRepository(opts.db);
+  const fileRepo = new FileRepository(opts.db);
 
   const deps: ToolDeps = {
     repoId: opts.repoId,
     repoPath: opts.repoPath,
+    fileRepo,
     symbolRepo,
     refRepo,
     schemaRepo,
@@ -108,6 +113,18 @@ export function createServer(opts: ServerOptions): McpServer {
     async ({ query, kind, path, limit }) => wrap(() => handleFind(deps, { query, kind, path, limit }))
   );
 
+  // --- cartograph_search_content ---
+  server.tool(
+    'cartograph_search_content',
+    'Search indexed source content by literal substring and map matches back to enclosing symbols.',
+    {
+      query: z.string().describe('Literal text to search for inside indexed source files'),
+      path: z.string().optional().describe('Optional file-path substring filter'),
+      limit: z.number().min(1).max(100).optional().describe('Max matches (default 20)'),
+    },
+    async ({ query, path, limit }) => wrap(() => handleSearchContent(deps, { query, path, limit }))
+  );
+
   // --- cartograph_symbol ---
   server.tool(
     'cartograph_symbol',
@@ -161,6 +178,17 @@ export function createServer(opts: ServerOptions): McpServer {
       symbolB: z.string().describe('Second symbol name (fully or partially qualified)'),
     },
     async ({ symbolA, symbolB }) => wrap(() => handleCompare(deps, { symbolA, symbolB }))
+  );
+
+  // --- cartograph_compare_many ---
+  server.tool(
+    'cartograph_compare_many',
+    'Compare one baseline symbol against multiple peers to spot missing methods, extra methods, and shared behavioral differences.',
+    {
+      baseline: z.string().describe('Baseline symbol to use as the pattern or reference implementation'),
+      others: z.array(z.string()).min(1).max(10).describe('One or more peer symbols to compare against the baseline'),
+    },
+    async ({ baseline, others }) => wrap(() => handleCompareMany(deps, { baseline, others }))
   );
 
   // --- cartograph_flow ---

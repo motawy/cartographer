@@ -38,11 +38,14 @@ export function generateRoot(stats: RepoStats, conventions?: ConventionsData): s
   lines.push(`- **cartograph_schema** \`[query]\` — list or search current database tables with column and foreign-key counts`);
   lines.push(`- **cartograph_table** \`<table>\` — inspect the exact current shape of a table and its direct foreign-key relationships`);
   lines.push(`- **cartograph_table_graph** \`<table>\` — walk the foreign-key neighborhood around a table to understand connected areas`);
+  lines.push(`- **cartograph_search_content** \`<query>\` — search method bodies and other indexed source text by literal substring`);
   lines.push(`- **cartograph_symbol** \`<name>\` — look up a class/interface/function and its relationships`);
   lines.push(`- **cartograph_deps** \`<symbol>\` — what does this symbol depend on? (directed graph, configurable depth)`);
   lines.push(`- **cartograph_dependents** \`<symbol>\` — what depends on this? (reverse dependency lookup)`);
   lines.push(`- **cartograph_blast_radius** \`<file>\` — what breaks if this file changes?`);
   lines.push(`- **cartograph_find** \`<query>\` — find symbols across modules by name or pattern`);
+  lines.push(`- **cartograph_compare** \`<a> <b>\` — compare two symbols structurally, including short method bodies and wiring targets`);
+  lines.push(`- **cartograph_compare_many** \`<baseline> <others...>\` — compare one symbol against several siblings at once`);
   lines.push(`- **cartograph_flow** \`<entrypoint>\` — trace an execution flow end-to-end\n`);
   lines.push(`Use these before grepping the codebase. They answer in seconds from the pre-built index.\n`);
 

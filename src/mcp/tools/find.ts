@@ -24,14 +24,32 @@ export function handleFind(deps: ToolDeps, params: FindParams): string {
   const results = symbolRepo.search(repoId, pattern, params.kind, limit, params.path);
 
   if (results.length === 0) {
-    // If path filter was used and got 0 results, suggest matching paths
+    const symbolSuggestions = symbolRepo.suggestSymbols(repoId, params.query, params.kind, params.path);
+
     if (params.path) {
       const pathHints = symbolRepo.suggestPaths(repoId, params.path);
-      if (pathHints.length > 0) {
-        return `No symbols found matching "${params.query}" in path "${params.path}".\n\nDid you mean one of these paths?\n${pathHints.map(p => `- ${p}`).join('\n')}`;
+      const lines = [`No symbols found matching "${params.query}" in path "${params.path}".`];
+      if (symbolSuggestions.length > 0) {
+        lines.push('', 'Did you mean one of these symbols?');
+        lines.push(...symbolSuggestions.map((suggestion) =>
+          `- ${suggestion.qualifiedName ?? suggestion.name} (${suggestion.kind}) — ${suggestion.filePath}`
+        ));
       }
-      return `No symbols found matching "${params.query}" in path "${params.path}". No files match that path fragment.`;
+      if (pathHints.length > 0) {
+        lines.push('', 'Did you mean one of these paths?');
+        lines.push(...pathHints.map((pathHint) => `- ${pathHint}`));
+      } else if (symbolSuggestions.length === 0) {
+        lines.push('No files match that path fragment.');
+      }
+      return lines.join('\n');
     }
+
+    if (symbolSuggestions.length > 0) {
+      return `No symbols found matching "${params.query}".\n\nDid you mean one of these symbols?\n${symbolSuggestions.map((suggestion) =>
+        `- ${suggestion.qualifiedName ?? suggestion.name} (${suggestion.kind}) — ${suggestion.filePath}`
+      ).join('\n')}`;
+    }
+
     return `No symbols found matching "${params.query}".`;
   }
 

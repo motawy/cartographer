@@ -1,10 +1,12 @@
 import type { SymbolRepository } from '../db/repositories/symbol-repository.js';
 import type { ReferenceRepository } from '../db/repositories/reference-repository.js';
 import type { DbSchemaRepository } from '../db/repositories/db-schema-repository.js';
+import type { FileRepository } from '../db/repositories/file-repository.js';
 
 export type ToolDeps = {
   repoId: number;
   repoPath?: string;
+  fileRepo?: FileRepository;
   symbolRepo: SymbolRepository;
   refRepo: ReferenceRepository;
   schemaRepo?: DbSchemaRepository;

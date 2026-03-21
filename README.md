@@ -129,6 +129,19 @@ Useful options:
 
 Import current schema directly from PostgreSQL into Cartograph's canonical schema layer.
 
+### `cartograph search-content <query> --repo-path <path>`
+
+Search indexed source content by literal substring and map matches back to enclosing symbols.
+
+Useful options:
+
+- `--path <fragment>` to restrict the search to matching file paths
+- `--limit <n>` to control how many matches are shown
+
+### `cartograph compare-many <baseline> <others...> --repo-path <path>`
+
+Compare one baseline symbol against several peers to spot missing methods, extra methods, and shared behavioral deltas.
+
 ### `cartograph serve --repo-path <path>`
 
 Start the MCP server for an indexed repo using stdio transport.
@@ -170,11 +183,13 @@ The MCP server currently exposes these tools:
 - `cartograph_table` - inspect current SQL table state, its columns, and foreign key relationships
 - `cartograph_table_graph` - traverse the foreign-key neighborhood around a table
 - `cartograph_find` - search symbols by name, kind, and optional path filter
+- `cartograph_search_content` - search method bodies and other indexed source text by literal substring
 - `cartograph_symbol` - inspect a symbol and its relationships
 - `cartograph_deps` - trace forward dependencies
 - `cartograph_dependents` - trace reverse dependencies
 - `cartograph_blast_radius` - show file-level impact
 - `cartograph_compare` - compare two symbols structurally
+- `cartograph_compare_many` - compare one baseline symbol against multiple peers
 - `cartograph_flow` - follow execution flow from an entry symbol
 
 ### Example MCP Config

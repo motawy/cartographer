@@ -34,7 +34,6 @@ export function buildCurrentSqlSchema(files: SqlFileInput[]): MaterializedDbTabl
   const tables = new Map<string, CurrentTableState>();
 
   const migrationFiles = [...files]
-    .filter((f) => migrationSortKey(f.path) < 999999999)
     .sort((a, b) => compareMigrationPaths(a.path, b.path));
 
   for (const file of migrationFiles) {
@@ -774,4 +773,3 @@ function migrationSortKey(path: string): number {
   // Fallback: sort after everything else
   return 999999999;
 }
-

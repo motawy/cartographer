@@ -119,10 +119,12 @@ describe('generateRoot', () => {
     expect(result).toContain('cartograph_schema');
     expect(result).toContain('cartograph_table');
     expect(result).toContain('cartograph_table_graph');
+    expect(result).toContain('cartograph_search_content');
     expect(result).toContain('cartograph_symbol');
     expect(result).toContain('cartograph_deps');
     expect(result).toContain('cartograph_blast_radius');
     expect(result).toContain('cartograph_find');
+    expect(result).toContain('cartograph_compare_many');
     expect(result).toContain('Use these before grepping');
   });
 

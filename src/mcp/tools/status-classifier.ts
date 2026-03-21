@@ -350,30 +350,9 @@ function isPhpBuiltin(
     return true;
   }
 
-  // Namespace-prefixed builtin: e.g. "simpro\core\controller\gantt\datetime"
-  // This happens when code uses `new DateTime()` without a `use` statement
-  // inside a namespaced file — the parser prepends the current namespace.
-  if (prefix && PHP_BUILTIN_CLASSES.has(classLeaf)) {
-    return true;
-  }
-
-  // Namespace-prefixed builtin static calls/constants:
-  // e.g. "simpro\core\...\datetime::createfromformat"
-  if (prefix) {
-    const scopeIdx = target.indexOf('::');
-    if (scopeIdx > 0) {
-      const classPart = target.substring(0, scopeIdx);
-      const leaf = classPart.substring(classPart.lastIndexOf('\\') + 1);
-      if (PHP_BUILTIN_CLASSES.has(leaf)) {
-        return true;
-      }
-    }
-  }
-
   return false;
 }
 
 function matchesAny(value: string, patterns: RegExp[]): boolean {
   return patterns.some((pattern) => pattern.test(value));
 }
-

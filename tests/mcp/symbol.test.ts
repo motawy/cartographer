@@ -106,6 +106,12 @@ describe('cartograph_symbol', () => {
     expect(result).toContain('cartograph_find');
   });
 
+  it('suggests similar symbols when lookup fails', () => {
+    const result = handleSymbol(deps, stats, { name: 'UserServce' });
+    expect(result).toContain('Did you mean');
+    expect(result).toContain('App\\Services\\UserService');
+  });
+
   it('deep mode shows stack with class_reference wiring', () => {
     const repoRepo = new RepoRepository(db);
     const fileRepo = new FileRepository(db);
