@@ -99,6 +99,10 @@ Useful options:
 
 - `--claude-md <path>` to override the target `CLAUDE.md`
 
+### `cartograph status [repo-path]`
+
+Show index freshness, coverage, and unresolved-reference trust breakdown for an already indexed repo.
+
 ### `cartograph serve --repo-path <path>`
 
 Start the MCP server for an indexed repo using stdio transport.
@@ -220,6 +224,7 @@ tests/
 npm install
 npm run build
 npm run dev -- index /path/to/repo --run-migrations
+npm run dev -- status /path/to/repo
 npm run dev -- generate /path/to/repo
 npm run dev -- serve --repo-path /path/to/repo
 npm test
