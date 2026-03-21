@@ -1,13 +1,13 @@
 import type Database from 'better-sqlite3';
-import type { ParsedDbTable } from '../../types.js';
+import type { MaterializedDbTable, ParsedDbTable } from '../../types.js';
 
 export interface DbTableRecord {
   id: number;
-  fileId: number;
+  fileId: number | null;
   name: string;
   normalizedName: string;
-  lineStart: number;
-  lineEnd: number;
+  lineStart: number | null;
+  lineEnd: number | null;
   filePath: string | null;
 }
 
@@ -133,6 +133,99 @@ export class DbSchemaRepository {
     };
   }
 
+  replaceCurrentSchema(
+    repoId: number,
+    tables: MaterializedDbTable[],
+    fileIdsByPath: Map<string, number>
+  ): void {
+    const doReplace = this.db.transaction(() => {
+      this.db.prepare('DELETE FROM db_current_tables WHERE repo_id = ?').run(repoId);
+
+      const insertTable = this.db.prepare(
+        `INSERT INTO db_current_tables
+           (repo_id, source_file_id, name, normalized_name, line_start, line_end)
+         VALUES (?, ?, ?, ?, ?, ?)`
+      );
+      const insertColumn = this.db.prepare(
+        `INSERT INTO db_current_columns
+           (table_id, source_file_id, name, normalized_name, data_type, is_nullable, default_value, ordinal_position, line_number)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      );
+      const insertForeignKey = this.db.prepare(
+        `INSERT INTO db_current_foreign_keys
+           (table_id, source_file_id, constraint_name, source_columns_json, target_table, normalized_target_table, target_columns_json, line_number)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      );
+
+      for (const table of tables) {
+        const tableInfo = insertTable.run(
+          repoId,
+          fileIdForPath(fileIdsByPath, table.sourcePath),
+          table.name,
+          table.normalizedName,
+          table.lineStart,
+          table.lineEnd
+        );
+        const tableId = Number(tableInfo.lastInsertRowid);
+
+        for (const column of table.columns) {
+          insertColumn.run(
+            tableId,
+            fileIdForPath(fileIdsByPath, column.sourcePath),
+            column.name,
+            column.normalizedName,
+            column.dataType,
+            column.isNullable ? 1 : 0,
+            column.defaultValue,
+            column.ordinalPosition,
+            column.lineNumber
+          );
+        }
+
+        for (const foreignKey of table.foreignKeys) {
+          insertForeignKey.run(
+            tableId,
+            fileIdForPath(fileIdsByPath, foreignKey.sourcePath),
+            foreignKey.constraintName,
+            JSON.stringify(foreignKey.sourceColumns),
+            foreignKey.targetTable,
+            foreignKey.normalizedTargetTable,
+            JSON.stringify(foreignKey.targetColumns),
+            foreignKey.lineNumber
+          );
+        }
+      }
+    });
+
+    doReplace();
+  }
+
+  countCurrentByRepo(repoId: number): DbSchemaCounts {
+    const row = this.db.prepare(
+      `SELECT
+         COUNT(DISTINCT t.id) AS tables,
+         COUNT(DISTINCT c.id) AS columns,
+         COUNT(DISTINCT fk.id) AS foreign_keys,
+         COUNT(DISTINCT t.source_file_id) AS files
+       FROM db_current_tables t
+       LEFT JOIN db_current_columns c ON c.table_id = t.id
+       LEFT JOIN db_current_foreign_keys fk ON fk.table_id = t.id
+       WHERE t.repo_id = ?`
+    ).get(repoId) as {
+      tables: number | null;
+      columns: number | null;
+      foreign_keys: number | null;
+      files: number | null;
+    };
+
+    return {
+      tables: row.tables ?? 0,
+      columns: row.columns ?? 0,
+      foreignKeys: row.foreign_keys ?? 0,
+      files: row.files ?? 0,
+    };
+  }
+
   findTablesByName(repoId: number, name: string, limit: number = 10): DbTableRecord[] {
     const normalized = normalizeSchemaName(name);
     const rows = this.db.prepare(
@@ -140,6 +233,33 @@ export class DbSchemaRepository {
        FROM db_tables t
        JOIN files f ON t.file_id = f.id
        WHERE f.repo_id = ?
+         AND (
+           t.normalized_name = ?
+           OR t.normalized_name LIKE ?
+         )
+       ORDER BY
+         CASE WHEN t.normalized_name = ? THEN 0 ELSE 1 END,
+         t.normalized_name
+       LIMIT ?`
+    ).all(repoId, normalized, `%.${normalized}`, normalized, limit) as Record<string, unknown>[];
+
+    return rows.map((row) => this.toTableRecord(row));
+  }
+
+  findCurrentTablesByName(repoId: number, name: string, limit: number = 10): DbTableRecord[] {
+    const normalized = normalizeSchemaName(name);
+    const rows = this.db.prepare(
+      `SELECT
+         t.id,
+         t.source_file_id AS file_id,
+         t.name,
+         t.normalized_name,
+         t.line_start,
+         t.line_end,
+         f.path AS file_path
+       FROM db_current_tables t
+       LEFT JOIN files f ON t.source_file_id = f.id
+       WHERE t.repo_id = ?
          AND (
            t.normalized_name = ?
            OR t.normalized_name LIKE ?
@@ -190,14 +310,81 @@ export class DbSchemaRepository {
     return rows.map((row) => this.toForeignKeyRecord(row));
   }
 
+  findCurrentColumns(tableId: number): DbColumnRecord[] {
+    const rows = this.db.prepare(
+      `SELECT
+         id,
+         table_id,
+         name,
+         normalized_name,
+         data_type,
+         is_nullable,
+         default_value,
+         ordinal_position,
+         line_number
+       FROM db_current_columns
+       WHERE table_id = ?
+       ORDER BY ordinal_position`
+    ).all(tableId) as Record<string, unknown>[];
+
+    return rows.map((row) => this.toColumnRecord(row));
+  }
+
+  findCurrentOutgoingForeignKeys(tableId: number): DbForeignKeyRecord[] {
+    const rows = this.db.prepare(
+      `SELECT
+         fk.id,
+         fk.table_id,
+         fk.constraint_name,
+         fk.source_columns_json,
+         fk.target_table,
+         fk.normalized_target_table,
+         fk.target_columns_json,
+         fk.line_number,
+         t.name AS table_name,
+         f.path AS file_path
+       FROM db_current_foreign_keys fk
+       JOIN db_current_tables t ON fk.table_id = t.id
+       LEFT JOIN files f ON fk.source_file_id = f.id
+       WHERE fk.table_id = ?
+       ORDER BY fk.line_number, fk.id`
+    ).all(tableId) as Record<string, unknown>[];
+
+    return rows.map((row) => this.toForeignKeyRecord(row));
+  }
+
+  findCurrentIncomingForeignKeys(repoId: number, normalizedTargetTable: string): DbForeignKeyRecord[] {
+    const rows = this.db.prepare(
+      `SELECT
+         fk.id,
+         fk.table_id,
+         fk.constraint_name,
+         fk.source_columns_json,
+         fk.target_table,
+         fk.normalized_target_table,
+         fk.target_columns_json,
+         fk.line_number,
+         t.name AS table_name,
+         f.path AS file_path
+       FROM db_current_foreign_keys fk
+       JOIN db_current_tables t ON fk.table_id = t.id
+       LEFT JOIN files f ON fk.source_file_id = f.id
+       WHERE t.repo_id = ?
+         AND fk.normalized_target_table = ?
+       ORDER BY t.name, fk.line_number, fk.id`
+    ).all(repoId, normalizedTargetTable) as Record<string, unknown>[];
+
+    return rows.map((row) => this.toForeignKeyRecord(row));
+  }
+
   private toTableRecord(row: Record<string, unknown>): DbTableRecord {
     return {
       id: row.id as number,
-      fileId: row.file_id as number,
+      fileId: (row.file_id as number | null) ?? null,
       name: row.name as string,
       normalizedName: row.normalized_name as string,
-      lineStart: row.line_start as number,
-      lineEnd: row.line_end as number,
+      lineStart: (row.line_start as number | null) ?? null,
+      lineEnd: (row.line_end as number | null) ?? null,
       filePath: (row.file_path as string) || null,
     };
   }
@@ -240,4 +427,9 @@ export function normalizeSchemaName(name: string): string {
     .map((part) => part.replace(/^[`"\[]+|[`"\]]+$/g, '').trim().toLowerCase())
     .filter(Boolean)
     .join('.');
+}
+
+function fileIdForPath(fileIdsByPath: Map<string, number>, path: string | null): number | null {
+  if (!path) return null;
+  return fileIdsByPath.get(path) ?? null;
 }

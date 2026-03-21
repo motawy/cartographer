@@ -21,73 +21,90 @@ describe('cartograph_table', () => {
     const schemaRepo = new DbSchemaRepository(db);
 
     const repo = repoRepo.findOrCreate('/test/repo', 'test');
-    const schemaFile = fileRepo.upsert(repo.id, 'db/schema.sql', 'sql', 'h1', 20);
+    const createFile = fileRepo.upsert(repo.id, 'db/migrations/001_create_users.sql', 'sql', 'h1', 20);
+    const alterFile = fileRepo.upsert(repo.id, 'db/migrations/002_add_account_fk.sql', 'sql', 'h2', 20);
+    const ordersFile = fileRepo.upsert(repo.id, 'db/migrations/003_create_orders.sql', 'sql', 'h3', 20);
 
-    schemaRepo.replaceFileSchema(schemaFile.id, [
-      {
-        name: 'users',
-        normalizedName: 'users',
-        lineStart: 1,
-        lineEnd: 5,
-        columns: [
-          {
-            name: 'id',
-            normalizedName: 'id',
-            dataType: 'INTEGER',
-            isNullable: false,
-            defaultValue: null,
-            ordinalPosition: 1,
-            lineNumber: 2,
-          },
-          {
-            name: 'account_id',
-            normalizedName: 'account_id',
-            dataType: 'INTEGER',
-            isNullable: true,
-            defaultValue: null,
-            ordinalPosition: 2,
-            lineNumber: 3,
-          },
-        ],
-        foreignKeys: [
-          {
-            constraintName: null,
-            sourceColumns: ['account_id'],
-            targetTable: 'accounts',
-            normalizedTargetTable: 'accounts',
-            targetColumns: ['id'],
-            lineNumber: 3,
-          },
-        ],
-      },
-      {
-        name: 'orders',
-        normalizedName: 'orders',
-        lineStart: 7,
-        lineEnd: 12,
-        columns: [
-          {
-            name: 'user_id',
-            normalizedName: 'user_id',
-            dataType: 'INTEGER',
-            isNullable: false,
-            defaultValue: null,
-            ordinalPosition: 1,
-            lineNumber: 8,
-          },
-        ],
-        foreignKeys: [
-          {
-            constraintName: null,
-            sourceColumns: ['user_id'],
-            targetTable: 'users',
-            normalizedTargetTable: 'users',
-            targetColumns: ['id'],
-            lineNumber: 8,
-          },
-        ],
-      },
-    ]);
+    schemaRepo.replaceCurrentSchema(
+      repo.id,
+      [
+        {
+          name: 'users',
+          normalizedName: 'users',
+          sourcePath: alterFile.path,
+          lineStart: 1,
+          lineEnd: 2,
+          columns: [
+            {
+              name: 'id',
+              normalizedName: 'id',
+              dataType: 'INTEGER',
+              isNullable: false,
+              defaultValue: null,
+              ordinalPosition: 1,
+              sourcePath: createFile.path,
+              lineNumber: 2,
+            },
+            {
+              name: 'account_id',
+              normalizedName: 'account_id',
+              dataType: 'INTEGER',
+              isNullable: true,
+              defaultValue: null,
+              ordinalPosition: 2,
+              sourcePath: alterFile.path,
+              lineNumber: 1,
+            },
+          ],
+          foreignKeys: [
+            {
+              constraintName: null,
+              sourceColumns: ['account_id'],
+              targetTable: 'accounts',
+              normalizedTargetTable: 'accounts',
+              targetColumns: ['id'],
+              sourcePath: alterFile.path,
+              lineNumber: 2,
+            },
+          ],
+        },
+        {
+          name: 'orders',
+          normalizedName: 'orders',
+          sourcePath: ordersFile.path,
+          lineStart: 1,
+          lineEnd: 5,
+          columns: [
+            {
+              name: 'user_id',
+              normalizedName: 'user_id',
+              dataType: 'INTEGER',
+              isNullable: false,
+              defaultValue: null,
+              ordinalPosition: 1,
+              sourcePath: ordersFile.path,
+              lineNumber: 2,
+            },
+          ],
+          foreignKeys: [
+            {
+              constraintName: null,
+              sourceColumns: ['user_id'],
+              targetTable: 'users',
+              normalizedTargetTable: 'users',
+              targetColumns: ['id'],
+              sourcePath: ordersFile.path,
+              lineNumber: 3,
+            },
+          ],
+        },
+      ],
+      new Map([
+        [createFile.path, createFile.id],
+        [alterFile.path, alterFile.id],
+        [ordersFile.path, ordersFile.id],
+      ])
+    );
 
     deps = {
       repoId: repo.id,
@@ -105,13 +122,14 @@ describe('cartograph_table', () => {
     const result = handleTable(deps, { name: 'users' });
 
     expect(result).toContain('## users');
-    expect(result).toContain('File: db/schema.sql:1-5');
-    expect(result).toContain('### Columns (2)');
+    expect(result).toContain('Current schema state derived from ordered SQL migrations.');
+    expect(result).toContain('Last table-level change: db/migrations/002_add_account_fk.sql:1-2');
+    expect(result).toContain('### Columns (2, current state)');
     expect(result).toContain('- id INTEGER NOT NULL');
     expect(result).toContain('- account_id INTEGER NULL');
-    expect(result).toContain('### Foreign Keys Out (1)');
+    expect(result).toContain('### Outbound Foreign Keys (1)');
     expect(result).toContain('- account_id -> accounts(id)');
-    expect(result).toContain('### Referenced By (1)');
+    expect(result).toContain('### Incoming Foreign Keys From Tables (1)');
     expect(result).toContain('- orders(user_id)');
   });
 });

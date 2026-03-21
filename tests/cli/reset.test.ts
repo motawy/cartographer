@@ -22,6 +22,9 @@ describe('resetDatabase', () => {
       expect(listTables(db)).toEqual([
         '_migrations',
         'db_columns',
+        'db_current_columns',
+        'db_current_foreign_keys',
+        'db_current_tables',
         'db_foreign_keys',
         'db_tables',
         'files',
@@ -44,6 +47,9 @@ describe('resetDatabase', () => {
       expect(listTables(db)).toEqual([
         '_migrations',
         'db_columns',
+        'db_current_columns',
+        'db_current_foreign_keys',
+        'db_current_tables',
         'db_foreign_keys',
         'db_tables',
         'files',
@@ -55,7 +61,7 @@ describe('resetDatabase', () => {
       const appliedCount = db.prepare(
         'SELECT COUNT(*) AS count FROM _migrations'
       ).get() as { count: number };
-      expect(appliedCount.count).toBe(5);
+      expect(appliedCount.count).toBe(6);
     } finally {
       db.close();
     }

@@ -107,7 +107,7 @@ Show index freshness, coverage, and unresolved-reference trust breakdown for an 
 
 ### `cartograph table <table> --repo-path <path>`
 
-Inspect an indexed SQL table: columns, outbound foreign keys, and inbound references from other tables.
+Inspect the current indexed SQL table state after replaying ordered `.sql` migrations: columns, outbound foreign keys, and inbound references from other tables.
 
 ### `cartograph serve --repo-path <path>`
 
@@ -146,7 +146,7 @@ Drop all indexed data and recreate the schema from migrations.
 The MCP server currently exposes these tools:
 
 - `cartograph_status` - show index freshness, coverage, and unresolved-reference trust breakdown
-- `cartograph_table` - inspect a SQL table, its columns, and foreign key relationships
+- `cartograph_table` - inspect current SQL table state, its columns, and foreign key relationships
 - `cartograph_find` - search symbols by name, kind, and optional path filter
 - `cartograph_symbol` - inspect a symbol and its relationships
 - `cartograph_deps` - trace forward dependencies
@@ -194,7 +194,7 @@ database:
 
 Notes:
 
- - `languages` supports `php` and `sql`. PHP powers symbol/reference indexing; SQL powers schema graph extraction for `.sql` DDL files.
+- `languages` supports `php` and `sql`. PHP powers symbol/reference indexing; SQL powers raw schema extraction plus current-schema replay for ordered `.sql` migrations.
 - Default excludes are `vendor/`, `node_modules/`, and `.git/`.
 - `additional_sources` paths may be relative to the repo root or absolute. Indexed files from those roots are stored with an `@label/` path prefix such as `@simpro-base/SystemConfig.php`.
 - The database path defaults to `~/.cartograph/cartograph.db` and can also be overridden with `CARTOGRAPH_DB_PATH`.
@@ -233,7 +233,7 @@ npm install
 npm run build
 npm run dev -- index /path/to/repo --run-migrations
 npm run dev -- status /path/to/repo
-npm run dev -- table users --repo-path /path/to/repo
+npm run dev -- table <table-name> --repo-path /path/to/repo
 npm run dev -- generate /path/to/repo
 npm run dev -- serve --repo-path /path/to/repo
 npm test

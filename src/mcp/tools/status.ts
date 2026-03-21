@@ -102,7 +102,8 @@ export function handleStatus(deps: StatusDeps): string {
        AND f.path NOT LIKE 'tests/%'
        AND f.path NOT LIKE 'cache/%'`
   ).get(repoId) as { total: number };
-  const schemaCounts = schemaRepo.countByRepo(repoId);
+  const rawSchemaCounts = schemaRepo.countByRepo(repoId);
+  const currentSchemaCounts = schemaRepo.countCurrentByRepo(repoId);
 
   const lastIndexed = repo.last_indexed_at
     ? new Date(repo.last_indexed_at as string)
@@ -134,10 +135,11 @@ export function handleStatus(deps: StatusDeps): string {
   }
   lines.push(`- Symbols: ${symbolCounts.total} (${symbolCounts.classes} classes, ${symbolCounts.methods} methods, ${symbolCounts.interfaces} interfaces, ${symbolCounts.traits} traits, ${symbolCounts.functions} functions)`);
   lines.push(`- References: ${refCounts.total} (${refCounts.resolved} resolved, ${refCounts.unresolved} unresolved)`);
-  if (schemaCounts.tables > 0) {
+  if (rawSchemaCounts.files > 0 || currentSchemaCounts.tables > 0) {
     lines.push(
-      `- DB schema: ${schemaCounts.tables} tables, ${schemaCounts.columns} columns, ` +
-      `${schemaCounts.foreignKeys} foreign keys (${schemaCounts.files} SQL files)`
+      `- DB schema: ${currentSchemaCounts.tables} current tables, ${currentSchemaCounts.columns} columns, ` +
+      `${currentSchemaCounts.foreignKeys} foreign keys ` +
+      `(from ${rawSchemaCounts.files} SQL files, ${rawSchemaCounts.tables} raw definitions)`
     );
   }
 

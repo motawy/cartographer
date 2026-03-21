@@ -41,6 +41,14 @@ export class FileRepository {
     return new Map(rows.map(r => [r.path, r.hash]));
   }
 
+  listByRepo(repoId: number): FileRecord[] {
+    const rows = this.db.prepare(
+      'SELECT * FROM files WHERE repo_id = ? ORDER BY path'
+    ).all(repoId) as Record<string, unknown>[];
+
+    return rows.map((row) => this.toRecord(row));
+  }
+
   deleteByPaths(repoId: number, paths: string[]): void {
     if (paths.length === 0) return;
     const placeholders = paths.map(() => '?').join(', ');

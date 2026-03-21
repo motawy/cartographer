@@ -13,7 +13,7 @@ export function handleTable(deps: TableDeps, params: TableParams): string {
     throw new Error('Schema repository is not available.');
   }
 
-  const matches = schemaRepo.findTablesByName(repoId, params.name, 10);
+  const matches = schemaRepo.findCurrentTablesByName(repoId, params.name, 10);
   if (matches.length === 0) {
     return `Table not found: "${params.name}".`;
   }
@@ -26,25 +26,28 @@ export function handleTable(deps: TableDeps, params: TableParams): string {
     const lines = [
       `Multiple tables match "${params.name}".`,
       '',
-      ...matches.map((match) => `- ${match.name} (${match.filePath ?? 'unknown file'})`),
+      ...matches.map((match) => `- ${match.name} (${match.filePath ?? 'unknown source'})`),
       '',
       'Retry with the full table name for an exact match.',
     ];
     return lines.join('\n');
   }
 
-  const columns = schemaRepo.findColumns(table.id);
-  const outgoing = schemaRepo.findOutgoingForeignKeys(table.id);
-  const incoming = schemaRepo.findIncomingForeignKeys(repoId, table.normalizedName);
+  const columns = schemaRepo.findCurrentColumns(table.id);
+  const outgoing = schemaRepo.findCurrentOutgoingForeignKeys(table.id);
+  const incoming = schemaRepo.findCurrentIncomingForeignKeys(repoId, table.normalizedName);
 
   const lines: string[] = [];
   lines.push(`## ${table.name}`);
-  if (table.filePath) {
-    lines.push(`File: ${table.filePath}:${table.lineStart}-${table.lineEnd}`);
+  lines.push('Current schema state derived from ordered SQL migrations.');
+  if (table.filePath && table.lineStart !== null && table.lineEnd !== null) {
+    lines.push(`Last table-level change: ${table.filePath}:${table.lineStart}-${table.lineEnd}`);
+  } else if (table.filePath) {
+    lines.push(`Last table-level change: ${table.filePath}`);
   }
 
   lines.push('');
-  lines.push(`### Columns (${columns.length})`);
+  lines.push(`### Columns (${columns.length}, current state)`);
   for (const column of columns) {
     const parts = [column.name];
     if (column.dataType) parts.push(column.dataType);
@@ -55,7 +58,7 @@ export function handleTable(deps: TableDeps, params: TableParams): string {
 
   if (outgoing.length > 0) {
     lines.push('');
-    lines.push(`### Foreign Keys Out (${outgoing.length})`);
+    lines.push(`### Outbound Foreign Keys (${outgoing.length})`);
     for (const fk of outgoing) {
       const source = fk.sourceColumns.join(', ');
       const target = fk.targetColumns.length > 0
@@ -67,7 +70,7 @@ export function handleTable(deps: TableDeps, params: TableParams): string {
 
   if (incoming.length > 0) {
     lines.push('');
-    lines.push(`### Referenced By (${incoming.length})`);
+    lines.push(`### Incoming Foreign Keys From Tables (${incoming.length})`);
     for (const fk of incoming) {
       const sourceTable = fk.tableName ?? 'unknown_table';
       const source = fk.sourceColumns.length > 0

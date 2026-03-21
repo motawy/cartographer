@@ -12,6 +12,7 @@ import { IndexError } from '../errors.js';
 import { basename, resolve } from 'path';
 import { appendFileSync, readFileSync, writeFileSync } from 'fs';
 import { extractSqlSchema } from './sql-schema-extractor.js';
+import { buildCurrentSqlSchema } from './sql-schema-state.js';
 
 export interface PipelineOptions {
   verbose?: boolean;
@@ -141,14 +142,29 @@ export class IndexPipeline {
 
     log(`Parsing complete (${this.elapsed(parseStart)})`);
 
-    // 6. Cross-file reference resolution
+    // 6. Rebuild current SQL schema from all discovered SQL migrations.
+    const sqlFiles = discovered.filter((file) => file.language === 'sql');
+    const fileIdsByPath = new Map(
+      this.fileRepo.listByRepo(repo.id).map((file) => [file.path, file.id] as const)
+    );
+    const currentSchema = sqlFiles.length > 0
+      ? buildCurrentSqlSchema(
+        sqlFiles.map((file) => ({
+          path: file.relativePath,
+          absolutePath: file.absolutePath,
+        }))
+      )
+      : [];
+    this.dbSchemaRepo.replaceCurrentSchema(repo.id, currentSchema, fileIdsByPath);
+
+    // 7. Cross-file reference resolution
     const resolution = this.referenceRepo.resolveTargets(repo.id);
     log(`References: ${resolution.resolved} resolved, ${resolution.unresolved} unresolved`);
 
-    // 7. Update repo timestamp
+    // 8. Update repo timestamp
     this.repoRepo.updateLastIndexed(repo.id);
 
-    // 8. Report
+    // 9. Report
     const totalSymbols = this.symbolRepo.countByRepo(repo.id);
     const totalRefs = this.referenceRepo.countByRepo(repo.id);
     log(

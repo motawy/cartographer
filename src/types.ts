@@ -84,6 +84,37 @@ export interface ParsedDbForeignKey {
   lineNumber: number | null;
 }
 
+export interface MaterializedDbTable {
+  name: string;
+  normalizedName: string;
+  sourcePath: string | null;
+  lineStart: number | null;
+  lineEnd: number | null;
+  columns: MaterializedDbColumn[];
+  foreignKeys: MaterializedDbForeignKey[];
+}
+
+export interface MaterializedDbColumn {
+  name: string;
+  normalizedName: string;
+  dataType: string | null;
+  isNullable: boolean;
+  defaultValue: string | null;
+  ordinalPosition: number;
+  sourcePath: string | null;
+  lineNumber: number | null;
+}
+
+export interface MaterializedDbForeignKey {
+  constraintName: string | null;
+  sourceColumns: string[];
+  targetTable: string;
+  normalizedTargetTable: string;
+  targetColumns: string[];
+  sourcePath: string | null;
+  lineNumber: number | null;
+}
+
 export interface CartographConfig {
   languages: string[];
   exclude: string[];

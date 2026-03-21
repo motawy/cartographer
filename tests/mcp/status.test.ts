@@ -5,6 +5,7 @@ import { RepoRepository } from '../../src/db/repositories/repo-repository.js';
 import { FileRepository } from '../../src/db/repositories/file-repository.js';
 import { SymbolRepository } from '../../src/db/repositories/symbol-repository.js';
 import { ReferenceRepository } from '../../src/db/repositories/reference-repository.js';
+import { DbSchemaRepository } from '../../src/db/repositories/db-schema-repository.js';
 import { handleStatus } from '../../src/mcp/tools/status.js';
 import type { ParsedSymbol } from '../../src/types.js';
 
@@ -19,6 +20,7 @@ describe('cartograph_status', () => {
       const fileRepo = new FileRepository(db);
       const symbolRepo = new SymbolRepository(db);
       const refRepo = new ReferenceRepository(db);
+      const schemaRepo = new DbSchemaRepository(db);
 
       const repo = repoRepo.findOrCreate('/test/repo', 'test');
       repoRepo.updateLastIndexed(repo.id);
@@ -27,6 +29,7 @@ describe('cartograph_status', () => {
       const barFile = fileRepo.upsert(repo.id, 'src/Bar.php', 'php', 'h2', 10);
       const testFile = fileRepo.upsert(repo.id, 'tests/FooTest.php', 'php', 'h3', 10);
       const cacheFile = fileRepo.upsert(repo.id, 'cache/Container.php', 'php', 'h4', 10);
+      const schemaFile = fileRepo.upsert(repo.id, 'db/001_create_users.sql', 'sql', 'h-schema', 10);
       fileRepo.upsert(repo.id, '@shared/BaseThing.php', 'php', 'h5', 10);
 
       const fooSymbol: ParsedSymbol = {
@@ -100,10 +103,57 @@ describe('cartograph_status', () => {
         { sourceQualifiedName: 'Container\\Generated', targetQualifiedName: 'Symfony\\Component\\HttpFoundation\\Request', kind: 'type_hint', line: 7 },
       ]);
       refRepo.resolveTargets(repo.id);
+      schemaRepo.replaceFileSchema(schemaFile.id, [
+        {
+          name: 'users',
+          normalizedName: 'users',
+          lineStart: 1,
+          lineEnd: 4,
+          columns: [
+            {
+              name: 'id',
+              normalizedName: 'id',
+              dataType: 'INTEGER',
+              isNullable: false,
+              defaultValue: null,
+              ordinalPosition: 1,
+              lineNumber: 2,
+            },
+          ],
+          foreignKeys: [],
+        },
+      ]);
+      schemaRepo.replaceCurrentSchema(
+        repo.id,
+        [
+          {
+            name: 'users',
+            normalizedName: 'users',
+            sourcePath: schemaFile.path,
+            lineStart: 1,
+            lineEnd: 4,
+            columns: [
+              {
+                name: 'id',
+                normalizedName: 'id',
+                dataType: 'INTEGER',
+                isNullable: false,
+                defaultValue: null,
+                ordinalPosition: 1,
+                sourcePath: schemaFile.path,
+                lineNumber: 2,
+              },
+            ],
+            foreignKeys: [],
+          },
+        ],
+        new Map([[schemaFile.path, schemaFile.id]])
+      );
 
       const result = handleStatus({ db, repoId: repo.id });
 
       expect(result).toContain('Additional sources: shared (1 files)');
+      expect(result).toContain('DB schema: 1 current tables, 1 columns, 0 foreign keys (from 1 SQL files, 1 raw definitions)');
       expect(result).toContain('Raw resolution rate: 16.7%');
       expect(result).toContain('Production trust rate: 75% (potential internal/cross-repo gaps: 1)');
       expect(result).toContain('Potential internal / cross-repo gaps: 1 (20%)');

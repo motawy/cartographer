@@ -27,7 +27,7 @@ export function renderTableForRepo(
 
 export function createTableCommand(): Command {
   return new Command('table')
-    .description('Inspect an indexed SQL table and its relationships')
+    .description('Inspect the current indexed SQL table schema and relationships')
     .argument('<table>', 'Table name')
     .option('--repo-path <path>', 'Repository path', '.')
     .action((tableName: string, opts: { repoPath: string }) => {

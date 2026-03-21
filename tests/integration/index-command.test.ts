@@ -294,6 +294,69 @@ CREATE TABLE orders (
         { target_table: 'accounts' },
         { target_table: 'users' },
       ]);
+
+      const currentTableRows = db.prepare(
+        'SELECT name, normalized_name FROM db_current_tables ORDER BY normalized_name'
+      ).all() as { name: string; normalized_name: string }[];
+      expect(currentTableRows).toEqual([
+        { name: 'orders', normalized_name: 'orders' },
+        { name: 'users', normalized_name: 'users' },
+      ]);
+    } finally {
+      rmSync(repoDir, { recursive: true, force: true });
+    }
+  });
+
+  it('replays ordered sql migrations into one current table state', () => {
+    const repoDir = mkdtempSync(join(tmpdir(), 'cartograph-sql-migrations-'));
+
+    try {
+      mkdirSync(join(repoDir, 'db', 'migrations'), { recursive: true });
+      writeFileSync(
+        join(repoDir, 'db', 'migrations', '001_create_quotes.sql'),
+        `CREATE TABLE quotes (
+  id INT NOT NULL,
+  legacy_code VARCHAR(20),
+  created_at DATETIME
+);
+`
+      );
+      writeFileSync(
+        join(repoDir, 'db', 'migrations', '002_alter_quotes.sql'),
+        `ALTER TABLE quotes
+  DROP COLUMN legacy_code,
+  ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'draft',
+  CHANGE COLUMN created_at created_on DATETIME NOT NULL;
+`
+      );
+
+      const pipeline = new IndexPipeline(db);
+      pipeline.run(repoDir, {
+        languages: ['sql'],
+        exclude: [],
+        additionalSources: [],
+        database: { path: ':memory:' },
+      });
+
+      const currentTables = db.prepare(
+        'SELECT name, line_start, line_end FROM db_current_tables ORDER BY name'
+      ).all() as { name: string; line_start: number; line_end: number }[];
+      expect(currentTables).toEqual([
+        { name: 'quotes', line_start: 1, line_end: 4 },
+      ]);
+
+      const currentColumns = db.prepare(
+        `SELECT c.name
+         FROM db_current_columns c
+         JOIN db_current_tables t ON c.table_id = t.id
+         WHERE t.normalized_name = 'quotes'
+         ORDER BY c.ordinal_position`
+      ).all() as { name: string }[];
+      expect(currentColumns.map((column) => column.name)).toEqual([
+        'id',
+        'status',
+        'created_on',
+      ]);
     } finally {
       rmSync(repoDir, { recursive: true, force: true });
     }
