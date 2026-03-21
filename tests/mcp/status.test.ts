@@ -104,13 +104,90 @@ describe('cartograph_status', () => {
       const result = handleStatus({ db, repoId: repo.id });
 
       expect(result).toContain('Additional sources: shared (1 files)');
-      expect(result).toContain('Raw resolution rate: 17%');
+      expect(result).toContain('Raw resolution rate: 16.7%');
       expect(result).toContain('Production trust rate: 75% (potential internal/cross-repo gaps: 1)');
       expect(result).toContain('Potential internal / cross-repo gaps: 1 (20%)');
       expect(result).toContain('PHP builtins: 1 (20%)');
       expect(result).toContain('External vendor / framework: 1 (20%)');
       expect(result).toContain('Test framework / mocks: 1 (20%)');
       expect(result).toContain('Generated cache: 1 (20%)');
+    } finally {
+      db.close();
+    }
+  });
+
+  it('caps non-perfect trust below 100 percent', () => {
+    const db = openDatabase({ path: ':memory:' });
+
+    try {
+      runMigrations(db);
+
+      const repoRepo = new RepoRepository(db);
+      const fileRepo = new FileRepository(db);
+      const symbolRepo = new SymbolRepository(db);
+      const refRepo = new ReferenceRepository(db);
+
+      const repo = repoRepo.findOrCreate('/test/almost-perfect', 'almost-perfect');
+      repoRepo.updateLastIndexed(repo.id);
+
+      const files = Array.from({ length: 1000 }, (_, idx) =>
+        fileRepo.upsert(repo.id, `src/File${idx}.php`, 'php', `h${idx}`, 1)
+      );
+
+      const symbols = files.map((file, idx) => {
+        const parsedSymbol: ParsedSymbol = {
+          name: `Thing${idx}`,
+          qualifiedName: `App\\Thing${idx}`,
+          kind: 'class',
+          visibility: null,
+          lineStart: 1,
+          lineEnd: 1,
+          signature: null,
+          returnType: null,
+          docblock: null,
+          children: [],
+          metadata: {},
+        };
+
+        const map = symbolRepo.replaceFileSymbols(file.id, [parsedSymbol]);
+        return {
+          fileId: file.id,
+          qualifiedName: parsedSymbol.qualifiedName,
+          symbolId: map.get(parsedSymbol.qualifiedName)!,
+        };
+      });
+
+      for (let idx = 0; idx < symbols.length - 1; idx++) {
+        refRepo.replaceFileReferences(symbols[idx].fileId, new Map([[symbols[idx].qualifiedName, symbols[idx].symbolId]]), [
+          {
+            sourceQualifiedName: symbols[idx].qualifiedName,
+            targetQualifiedName: symbols[idx + 1].qualifiedName,
+            kind: 'type_hint',
+            line: 1,
+          },
+        ]);
+      }
+
+      refRepo.replaceFileReferences(
+        symbols[symbols.length - 1].fileId,
+        new Map([[symbols[symbols.length - 1].qualifiedName, symbols[symbols.length - 1].symbolId]]),
+        [
+          {
+            sourceQualifiedName: symbols[symbols.length - 1].qualifiedName,
+            targetQualifiedName: 'App\\MissingThing',
+            kind: 'type_hint',
+            line: 1,
+          },
+        ]
+      );
+
+      refRepo.resolveTargets(repo.id);
+
+      const result = handleStatus({ db, repoId: repo.id });
+
+      expect(result).toContain('References: 1000 (999 resolved, 1 unresolved)');
+      expect(result).toContain('Raw resolution rate: 99.9%');
+      expect(result).toContain('Production trust rate: 99.9% (potential internal/cross-repo gaps: 1)');
     } finally {
       db.close();
     }

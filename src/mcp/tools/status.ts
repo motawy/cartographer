@@ -133,13 +133,14 @@ export function handleStatus(deps: StatusDeps): string {
   lines.push(`- References: ${refCounts.total} (${refCounts.resolved} resolved, ${refCounts.unresolved} unresolved)`);
 
   if (refCounts.total > 0) {
-    const pct = Math.round((refCounts.resolved / refCounts.total) * 100);
+    const pct = formatRate(refCounts.resolved, refCounts.total);
     lines.push(`- Raw resolution rate: ${pct}%`);
   }
 
   if (productionRefs.total > 0) {
-    const trustPct = Math.round(
-      ((productionRefs.total - unresolvedAnalysis.productionPotentialInternalCount) / productionRefs.total) * 100
+    const trustPct = formatRate(
+      productionRefs.total - unresolvedAnalysis.productionPotentialInternalCount,
+      productionRefs.total
     );
     lines.push(
       `- Production trust rate: ${trustPct}% ` +
@@ -172,4 +173,21 @@ function timeSince(date: Date): string {
   if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
   return `${days}d ago`;
+}
+
+function formatRate(numerator: number, denominator: number): string {
+  if (denominator <= 0) return '0';
+
+  if (numerator >= denominator) {
+    return '100';
+  }
+
+  const rounded = Math.round((numerator / denominator) * 1000) / 10;
+  const capped = Math.min(99.9, rounded);
+
+  if (Number.isInteger(capped)) {
+    return capped.toFixed(0);
+  }
+
+  return capped.toFixed(1);
 }
