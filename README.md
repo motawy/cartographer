@@ -105,9 +105,25 @@ Useful options:
 
 Show index freshness, coverage, and unresolved-reference trust breakdown for an already indexed repo.
 
+### `cartograph schema [query] --repo-path <path>`
+
+List or search current indexed database tables with column counts and inbound/outbound foreign-key counts.
+
+Useful options:
+
+- `--limit <n>` to control how many tables are shown
+
 ### `cartograph table <table> --repo-path <path>`
 
 Inspect the current indexed SQL table state: columns, outbound foreign keys, and inbound references from other tables.
+
+### `cartograph table-graph <table> --repo-path <path>`
+
+Traverse the foreign-key neighborhood around a table to see connected tables by depth.
+
+Useful options:
+
+- `--depth <n>` for foreign-key traversal depth
 
 ### `cartograph schema-import <repo-path>`
 
@@ -150,7 +166,9 @@ Drop all indexed data and recreate the schema from migrations.
 The MCP server currently exposes these tools:
 
 - `cartograph_status` - show index freshness, coverage, and unresolved-reference trust breakdown
+- `cartograph_schema` - list or search current database tables
 - `cartograph_table` - inspect current SQL table state, its columns, and foreign key relationships
+- `cartograph_table_graph` - traverse the foreign-key neighborhood around a table
 - `cartograph_find` - search symbols by name, kind, and optional path filter
 - `cartograph_symbol` - inspect a symbol and its relationships
 - `cartograph_deps` - trace forward dependencies
@@ -171,6 +189,8 @@ The MCP server currently exposes these tools:
   }
 }
 ```
+
+MCP clients such as Claude Code launch `cartograph serve` for you. You do not need to start the server manually when it is configured in `.mcp.json`.
 
 ## Configuration
 
@@ -219,7 +239,8 @@ Notes:
 3. PHP parsing extracts symbols into the SQLite index.
 4. Reference extraction records symbol relationships.
 5. Cross-file resolution links references to concrete indexed symbols.
-6. Output generators and MCP tools read from the prebuilt index.
+6. Current schema is materialized either from SQL migrations or a live PostgreSQL import.
+7. Output generators and MCP tools read from the prebuilt index and canonical schema layer.
 
 ## Project Structure
 
@@ -246,7 +267,9 @@ npm install
 npm run build
 npm run dev -- index /path/to/repo --run-migrations
 npm run dev -- status /path/to/repo
+npm run dev -- schema --repo-path /path/to/repo
 npm run dev -- table <table-name> --repo-path /path/to/repo
+npm run dev -- table-graph <table-name> --repo-path /path/to/repo --depth 2
 npm run dev -- schema-import /path/to/repo
 npm run dev -- generate /path/to/repo
 npm run dev -- serve --repo-path /path/to/repo

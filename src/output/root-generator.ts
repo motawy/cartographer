@@ -35,6 +35,9 @@ export function generateRoot(stats: RepoStats, conventions?: ConventionsData): s
 
   lines.push(`## Cartograph Tools\n`);
   lines.push(`This project is indexed by Cartograph. Use these MCP tools for cross-cutting queries instead of exploring files manually:\n`);
+  lines.push(`- **cartograph_schema** \`[query]\` — list or search current database tables with column and foreign-key counts`);
+  lines.push(`- **cartograph_table** \`<table>\` — inspect the exact current shape of a table and its direct foreign-key relationships`);
+  lines.push(`- **cartograph_table_graph** \`<table>\` — walk the foreign-key neighborhood around a table to understand connected areas`);
   lines.push(`- **cartograph_symbol** \`<name>\` — look up a class/interface/function and its relationships`);
   lines.push(`- **cartograph_deps** \`<symbol>\` — what does this symbol depend on? (directed graph, configurable depth)`);
   lines.push(`- **cartograph_dependents** \`<symbol>\` — what depends on this? (reverse dependency lookup)`);

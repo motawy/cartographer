@@ -7,6 +7,7 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { RepoRepository } from '../../src/db/repositories/repo-repository.js';
 import { FileRepository } from '../../src/db/repositories/file-repository.js';
 import { SymbolRepository } from '../../src/db/repositories/symbol-repository.js';
+import { DbSchemaRepository } from '../../src/db/repositories/db-schema-repository.js';
 import { createServer } from '../../src/mcp/server.js';
 import type { ParsedSymbol } from '../../src/types.js';
 
@@ -22,6 +23,7 @@ describe('MCP Server Integration', () => {
     const repoRepo = new RepoRepository(db);
     const fileRepo = new FileRepository(db);
     const symbolRepo = new SymbolRepository(db);
+    const schemaRepo = new DbSchemaRepository(db);
 
     const repo = repoRepo.findOrCreate('/test/repo', 'test');
     repoId = repo.id;
@@ -33,6 +35,28 @@ describe('MCP Server Integration', () => {
       signature: null, returnType: null, docblock: null, children: [], metadata: {},
     };
     symbolRepo.replaceFileSymbols(f1.id, [sym]);
+    schemaRepo.replaceCurrentSchemaFromImport(repo.id, [
+      {
+        name: 'quotes',
+        normalizedName: 'quotes',
+        sourcePath: null,
+        lineStart: null,
+        lineEnd: null,
+        columns: [
+          {
+            name: 'id',
+            normalizedName: 'id',
+            dataType: 'integer',
+            isNullable: false,
+            defaultValue: null,
+            ordinalPosition: 1,
+            sourcePath: null,
+            lineNumber: null,
+          },
+        ],
+        foreignKeys: [],
+      },
+    ]);
 
     // Create server + in-memory transport for testing
     const server = createServer({ db, repoId });
@@ -48,7 +72,7 @@ describe('MCP Server Integration', () => {
     db.close();
   });
 
-  it('lists all 9 tools', async () => {
+  it('lists all 11 tools', async () => {
     const { tools } = await client.listTools();
     const names = tools.map(t => t.name).sort();
     expect(names).toEqual([
@@ -58,9 +82,11 @@ describe('MCP Server Integration', () => {
       'cartograph_deps',
       'cartograph_find',
       'cartograph_flow',
+      'cartograph_schema',
       'cartograph_status',
       'cartograph_symbol',
       'cartograph_table',
+      'cartograph_table_graph',
     ]);
   });
 
@@ -75,5 +101,12 @@ describe('MCP Server Integration', () => {
     const result = await client.callTool({ name: 'cartograph_symbol', arguments: { name: 'Nonexistent' } });
     const text = (result.content as { type: string; text: string }[])[0].text;
     expect(text).toContain('not found');
+  });
+
+  it('handles cartograph_schema tool call', async () => {
+    const result = await client.callTool({ name: 'cartograph_schema', arguments: { query: 'quote' } });
+    const text = (result.content as { type: string; text: string }[])[0].text;
+    expect(text).toContain('## Schema');
+    expect(text).toContain('quotes');
   });
 });

@@ -46,8 +46,11 @@ describe('generateClaudeMdSection', () => {
     expect(result).toContain('122,000 symbols');
   });
 
-  it('lists all 8 MCP tools with descriptions', () => {
+  it('lists all 11 MCP tools with descriptions', () => {
     const result = generateClaudeMdSection(makeStats(), makeConventions());
+    expect(result).toContain('cartograph_schema');
+    expect(result).toContain('cartograph_table');
+    expect(result).toContain('cartograph_table_graph');
     expect(result).toContain('cartograph_find');
     expect(result).toContain('cartograph_symbol');
     expect(result).toContain('cartograph_deps');
@@ -69,6 +72,8 @@ describe('generateClaudeMdSection', () => {
     const result = generateClaudeMdSection(makeStats(), makeConventions());
     expect(result).toContain('before');
     expect(result).toMatch(/grep|read|find/i);
+    expect(result).toContain('cartograph_schema');
+    expect(result).toContain('cartograph_table_graph');
   });
 
   it('includes cartograph_status guidance', () => {

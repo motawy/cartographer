@@ -54,6 +54,8 @@ describe('Generate CLAUDE.md integration', () => {
     expect(section).toContain('CARTOGRAPH:END');
     expect(section).toContain('2 files');
     expect(section).toContain('2 symbols');
+    expect(section).toContain('cartograph_schema');
+    expect(section).toContain('cartograph_table_graph');
     expect(section).toContain('cartograph_find');
     expect(section).toContain('cartograph_compare');
   });
@@ -64,6 +66,7 @@ describe('Generate CLAUDE.md integration', () => {
     const result = injectSection(existing, section);
     expect(result).toContain('# My Project');
     expect(result).toContain('This is my project.');
+    expect(result).toContain('cartograph_schema');
     expect(result).toContain('cartograph_find');
   });
 

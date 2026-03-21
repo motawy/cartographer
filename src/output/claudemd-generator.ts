@@ -16,17 +16,23 @@ export function generateClaudeMdSection(stats: RepoStats, conventions: Conventio
   // Workflow directive
   lines.push(`### Workflow`);
   lines.push(`1. Run \`cartograph_status\` to check if the index is fresh (warns if stale)`);
-  lines.push(`2. Use \`cartograph_find\` before grepping — it searches the pre-built index`);
-  lines.push(`3. Use \`cartograph_symbol\` with \`deep: true\` to see the full vertical stack (Route→Controller→Builder→Model) in one call`);
-  lines.push(`4. Use \`cartograph_compare\` for pattern-copy work — shows what A has that B doesn't, with method bodies and wiring targets inlined`);
-  lines.push(`5. Use \`cartograph_deps\` to trace forward dependencies — shows which method creates each edge (e.g. "via getControllerName(), line 13")`);
-  lines.push(`6. Use \`cartograph_flow\` to trace execution flow — follows parent class template methods through child overrides\n`);
+  lines.push(`2. For database work, use \`cartograph_schema\` to discover tables before guessing names`);
+  lines.push(`3. Use \`cartograph_table\` for exact current table shape (columns + inbound/outbound foreign keys)`);
+  lines.push(`4. Use \`cartograph_table_graph\` to walk related tables by foreign keys before searching SQL files manually`);
+  lines.push(`5. Use \`cartograph_find\` before grepping — it searches the pre-built index`);
+  lines.push(`6. Use \`cartograph_symbol\` with \`deep: true\` to see the full vertical stack (Route→Controller→Builder→Model) in one call`);
+  lines.push(`7. Use \`cartograph_compare\` for pattern-copy work — shows what A has that B doesn't, with method bodies and wiring targets inlined`);
+  lines.push(`8. Use \`cartograph_deps\` to trace forward dependencies — shows which method creates each edge (e.g. "via getControllerName(), line 13")`);
+  lines.push(`9. Use \`cartograph_flow\` to trace execution flow — follows parent class template methods through child overrides\n`);
 
   // Tool reference
   lines.push(`### Available Tools\n`);
   lines.push('| Tool | What it does | Key options |');
   lines.push('|------|-------------|-------------|');
   lines.push('| `cartograph_status` | Check index health and freshness | — |');
+  lines.push('| `cartograph_schema` | List or search current database tables with column and foreign-key counts. Use this first for DB work so you do not guess table names. | `query`: partial table name. `limit`: max results |');
+  lines.push('| `cartograph_table` | Inspect exact current table shape from Cartograph\'s canonical schema layer, including columns and inbound/outbound foreign keys. | `name`: table name |');
+  lines.push('| `cartograph_table_graph` | Traverse the foreign-key neighborhood around a table to understand adjacent tables and impact radius. | `name`: table name. `depth`: 1-5 |');
   lines.push('| `cartograph_find` | Search symbols by name (fuzzy, matches anywhere in qualified name). Path filter supports partial/substring matching. Suggests corrections on 0 results. | `kind`: class/method/interface/etc. `path`: substring match on file path (e.g. `"Route/Root/Companies"`) |');
   lines.push('| `cartograph_symbol` | Look up a class and its relationships. With `deep: true`, shows full vertical stack: inheritance, wiring (which method → which class), concrete implementations, depth-2 wiring detail, and **context requirements** (which `$this->args`/`$this->params` keys the class consumes — answers \"can I reuse this in a different route?\"). | `name`: fully or partially qualified. `deep`: true for full stack view |');
   lines.push('| `cartograph_deps` | Forward dependency graph. Shows which method creates each edge (e.g. "via getControllerName(), line 13"). Follows `::class` references through method bodies. | `depth`: 1-10 (default 3) |');

@@ -116,6 +116,9 @@ describe('generateRoot', () => {
   it('includes Cartograph MCP tools section', () => {
     const result = generateRoot(makeStats());
     expect(result).toContain('## Cartograph Tools');
+    expect(result).toContain('cartograph_schema');
+    expect(result).toContain('cartograph_table');
+    expect(result).toContain('cartograph_table_graph');
     expect(result).toContain('cartograph_symbol');
     expect(result).toContain('cartograph_deps');
     expect(result).toContain('cartograph_blast_radius');

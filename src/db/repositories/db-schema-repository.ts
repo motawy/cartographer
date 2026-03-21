@@ -43,6 +43,12 @@ export interface DbSchemaCounts {
   files: number;
 }
 
+export interface DbCurrentTableSummaryRecord extends DbTableRecord {
+  columnCount: number;
+  outboundForeignKeyCount: number;
+  incomingForeignKeyCount: number;
+}
+
 export class DbSchemaRepository {
   constructor(private db: Database.Database) {}
 
@@ -277,6 +283,72 @@ export class DbSchemaRepository {
     return rows.map((row) => this.toTableRecord(row));
   }
 
+  listCurrentTableSummaries(
+    repoId: number,
+    options: { query?: string; limit?: number } = {}
+  ): DbCurrentTableSummaryRecord[] {
+    const limit = options.limit ?? 50;
+    const normalized = options.query ? normalizeSchemaName(options.query) : null;
+    const queryFilter = normalized ? `AND (
+      t.normalized_name = @normalized
+      OR t.normalized_name LIKE @contains
+      OR t.normalized_name LIKE @suffix
+    )` : '';
+
+    const rows = this.db.prepare(
+      `SELECT
+         t.id,
+         t.source_file_id AS file_id,
+         t.name,
+         t.normalized_name,
+         t.line_start,
+         t.line_end,
+         f.path AS file_path,
+         (
+           SELECT COUNT(*)
+           FROM db_current_columns c
+           WHERE c.table_id = t.id
+         ) AS column_count,
+         (
+           SELECT COUNT(*)
+           FROM db_current_foreign_keys fk
+           WHERE fk.table_id = t.id
+         ) AS outbound_fk_count,
+         (
+           SELECT COUNT(*)
+           FROM db_current_foreign_keys fk
+           JOIN db_current_tables src ON src.id = fk.table_id
+           WHERE src.repo_id = t.repo_id
+             AND fk.normalized_target_table = t.normalized_name
+         ) AS incoming_fk_count
+       FROM db_current_tables t
+       LEFT JOIN files f ON t.source_file_id = f.id
+       WHERE t.repo_id = @repoId
+       ${queryFilter}
+       ORDER BY
+         CASE WHEN @normalized IS NOT NULL AND t.normalized_name = @normalized THEN 0 ELSE 1 END,
+         t.normalized_name
+       LIMIT @limit`
+    ).all({
+      repoId,
+      normalized,
+      contains: normalized ? `%${normalized}%` : null,
+      suffix: normalized ? `%.${normalized}` : null,
+      limit,
+    }) as Record<string, unknown>[];
+
+    return rows.map((row) => this.toCurrentTableSummaryRecord(row));
+  }
+
+  findCurrentTableSummary(repoId: number, normalizedName: string): DbCurrentTableSummaryRecord | null {
+    const rows = this.listCurrentTableSummaries(repoId, {
+      query: normalizedName,
+      limit: 10,
+    });
+
+    return rows.find((row) => row.normalizedName === normalizedName) ?? null;
+  }
+
   findColumns(tableId: number): DbColumnRecord[] {
     const rows = this.db.prepare(
       `SELECT * FROM db_columns
@@ -419,6 +491,16 @@ export class DbSchemaRepository {
       lineNumber: (row.line_number as number) || null,
       tableName: (row.table_name as string) || undefined,
       filePath: (row.file_path as string) || null,
+    };
+  }
+
+  private toCurrentTableSummaryRecord(row: Record<string, unknown>): DbCurrentTableSummaryRecord {
+    const base = this.toTableRecord(row);
+    return {
+      ...base,
+      columnCount: Number(row.column_count) || 0,
+      outboundForeignKeyCount: Number(row.outbound_fk_count) || 0,
+      incomingForeignKeyCount: Number(row.incoming_fk_count) || 0,
     };
   }
 }

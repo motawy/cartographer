@@ -13,7 +13,9 @@ import { handleDependents } from './tools/dependents.js';
 import { handleBlastRadius } from './tools/blast-radius.js';
 import { handleCompare } from './tools/compare.js';
 import { handleStatus } from './tools/status.js';
+import { handleSchema } from './tools/schema.js';
 import { handleTable } from './tools/table.js';
+import { handleTableGraph } from './tools/table-graph.js';
 
 interface ServerOptions {
   db: Database.Database;
@@ -69,6 +71,28 @@ export function createServer(opts: ServerOptions): McpServer {
       name: z.string().describe('Table name, optionally schema-qualified (e.g. "users", "public.orders")'),
     },
     async ({ name }) => wrap(() => handleTable(deps, { name }))
+  );
+
+  // --- cartograph_schema ---
+  server.tool(
+    'cartograph_schema',
+    'List or search current database tables with column and foreign-key counts.',
+    {
+      query: z.string().optional().describe('Optional table-name search, e.g. "quote"'),
+      limit: z.number().min(1).max(200).optional().describe('Max results (default 50)'),
+    },
+    async ({ query, limit }) => wrap(() => handleSchema(deps, { query, limit }))
+  );
+
+  // --- cartograph_table_graph ---
+  server.tool(
+    'cartograph_table_graph',
+    'Traverse the foreign-key neighborhood around a table.',
+    {
+      name: z.string().describe('Table name, optionally schema-qualified (e.g. "quotes", "public.orders")'),
+      depth: z.number().min(1).max(5).optional().describe('Traversal depth (default 1)'),
+    },
+    async ({ name, depth }) => wrap(() => handleTableGraph(deps, { name, depth }))
   );
 
   // --- cartograph_find ---
