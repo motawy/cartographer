@@ -12,6 +12,7 @@ function makeConfig(overrides: Partial<CartographConfig> = {}): CartographConfig
   return {
     languages: ['php'],
     exclude: ['vendor/'],
+    additionalSources: [],
     database: { path: ':memory:' },
     ...overrides,
   };
@@ -103,6 +104,31 @@ describe('File Walker', () => {
       expect(paths).toEqual(['ignored/extra.php', 'tracked.php']);
     } finally {
       rmSync(repoDir, { recursive: true, force: true });
+    }
+  });
+
+  it('indexes additional source roots with a visible path prefix', () => {
+    const repoDir = mkdtempSync(join(tmpdir(), 'cartograph-additional-root-'));
+    const extraDir = mkdtempSync(join(tmpdir(), 'cartograph-additional-extra-'));
+
+    try {
+      writeFileSync(join(repoDir, 'Main.php'), '<?php class MainFile {}');
+      writeFileSync(join(extraDir, 'Shared.php'), '<?php class SharedFile {}');
+
+      const files = discoverFiles(repoDir, makeConfig({
+        additionalSources: [{ path: extraDir, label: 'shared-base' }],
+        exclude: [],
+      }));
+
+      expect(files.map((file) => file.relativePath)).toEqual([
+        '@shared-base/Shared.php',
+        'Main.php',
+      ]);
+      expect(files.find((file) => file.relativePath === '@shared-base/Shared.php')?.sourceLabel)
+        .toBe('shared-base');
+    } finally {
+      rmSync(repoDir, { recursive: true, force: true });
+      rmSync(extraDir, { recursive: true, force: true });
     }
   });
 });

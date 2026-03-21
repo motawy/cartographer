@@ -20,6 +20,7 @@ Cartograph is a TypeScript CLI and MCP server that indexes a PHP codebase into a
 ## What It Does
 
 - Discovers source files using `git ls-files` when available, with `.cartograph.yml` excludes applied
+- Can index explicit additional source roots outside the repo via `.cartograph.yml` `additional_sources`
 - Parses PHP with Tree-sitter and indexes classes, interfaces, traits, enums, functions, methods, properties, and constants
 - Extracts references such as inheritance, implementations, trait use, instantiation, static calls, self calls, type hints, and class references
 - Stores the index locally so CLI commands and MCP tools can answer structural questions without rescanning the repo
@@ -134,7 +135,7 @@ Drop all indexed data and recreate the schema from migrations.
 
 The MCP server currently exposes these tools:
 
-- `cartograph_status` - show index freshness and coverage
+- `cartograph_status` - show index freshness, coverage, and unresolved-reference trust breakdown
 - `cartograph_find` - search symbols by name, kind, and optional path filter
 - `cartograph_symbol` - inspect a symbol and its relationships
 - `cartograph_deps` - trace forward dependencies
@@ -171,6 +172,10 @@ exclude:
   - node_modules/
   - storage/
 
+additional_sources:
+  - path: ../../objects
+    label: simpro-base
+
 database:
   path: /Users/you/.cartograph/cartograph.db
 ```
@@ -179,6 +184,7 @@ Notes:
 
 - `languages` should currently stay at `php`. The file walker knows about some other extensions, but parsing support is only implemented for PHP.
 - Default excludes are `vendor/`, `node_modules/`, and `.git/`.
+- `additional_sources` paths may be relative to the repo root or absolute. Indexed files from those roots are stored with an `@label/` path prefix such as `@simpro-base/SystemConfig.php`.
 - The database path defaults to `~/.cartograph/cartograph.db` and can also be overridden with `CARTOGRAPH_DB_PATH`.
 
 ## How It Works

@@ -12,6 +12,7 @@ function testConfig(): CartographConfig {
   return {
     languages: ['php'],
     exclude: ['vendor/'],
+    additionalSources: [],
     database: { path: ':memory:' },
   };
 }

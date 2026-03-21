@@ -1,10 +1,10 @@
 import { execSync } from 'child_process';
 import { createHash } from 'crypto';
-import { readFileSync } from 'fs';
-import { join, extname } from 'path';
+import { readFileSync, statSync } from 'fs';
+import { join, extname, resolve } from 'path';
 import ignore from 'ignore';
 import fg from 'fast-glob';
-import type { DiscoveredFile, CartographConfig } from '../types.js';
+import type { AdditionalSourceConfig, DiscoveredFile, CartographConfig } from '../types.js';
 
 const LANGUAGE_EXTENSIONS: Record<string, string> = {
   '.php': 'php',
@@ -29,32 +29,48 @@ export function discoverFiles(
   }
 
   const sourcePatterns = [...allowedExtensions].map((ext) => `**/*${ext}`);
-  const filePaths = discoverCandidatePaths(repoPath, config.exclude, sourcePatterns);
+  const roots = buildDiscoveryRoots(repoPath, config.additionalSources);
+  const files = new Map<string, DiscoveredFile>();
 
-  // Apply config excludes
-  const ig = ignore().add(config.exclude);
-  const filteredPaths = filePaths.filter((p) => !ig.ignores(p));
+  for (const root of roots) {
+    const filePaths = discoverCandidatePaths(root.rootPath, config.exclude, sourcePatterns);
+    const ig = ignore().add(config.exclude);
+    const filteredPaths = filePaths.filter((p) => !ig.ignores(p));
 
-  const files: DiscoveredFile[] = [];
+    for (const discoveredPath of filteredPaths) {
+      const ext = extname(discoveredPath);
+      if (!allowedExtensions.has(ext)) continue;
 
-  for (const relativePath of filteredPaths) {
-    const ext = extname(relativePath);
-    if (!allowedExtensions.has(ext)) continue;
+      const language = LANGUAGE_EXTENSIONS[ext]!;
+      const absolutePath = join(root.rootPath, discoveredPath);
+      const relativePath = root.pathPrefix
+        ? `${root.pathPrefix}${discoveredPath}`
+        : discoveredPath;
 
-    const language = LANGUAGE_EXTENSIONS[ext]!;
-    const absolutePath = join(repoPath, relativePath);
-
-    try {
-      const content = readFileSync(absolutePath, 'utf-8');
-      const hash = createHash('sha256').update(content).digest('hex');
-      files.push({ relativePath, absolutePath, language, hash });
-    } catch {
-      // Skip unreadable files
-      continue;
+      try {
+        const content = readFileSync(absolutePath, 'utf-8');
+        const hash = createHash('sha256').update(content).digest('hex');
+        files.set(relativePath, {
+          relativePath,
+          absolutePath,
+          language,
+          hash,
+          sourceLabel: root.label,
+        });
+      } catch {
+        // Skip unreadable files
+        continue;
+      }
     }
   }
 
-  return files;
+  return [...files.values()].sort((a, b) => a.relativePath.localeCompare(b.relativePath));
+}
+
+interface DiscoveryRoot {
+  rootPath: string;
+  label: string;
+  pathPrefix: string;
 }
 
 function discoverCandidatePaths(
@@ -111,4 +127,50 @@ function runGitCommand(repoPath: string, command: string): string[] | null {
   } catch {
     return null;
   }
+}
+
+function buildDiscoveryRoots(
+  repoPath: string,
+  additionalSources: AdditionalSourceConfig[]
+): DiscoveryRoot[] {
+  const roots: DiscoveryRoot[] = [
+    { rootPath: repoPath, label: 'repo', pathPrefix: '' },
+  ];
+  const seenLabels = new Set<string>(['repo']);
+
+  for (const source of additionalSources) {
+    const label = normalizeSourceLabel(source.label);
+    if (seenLabels.has(label)) {
+      throw new Error(`Duplicate additional source label: ${source.label}`);
+    }
+
+    const rootPath = resolve(repoPath, source.path);
+    const stat = statSync(rootPath, { throwIfNoEntry: false });
+    if (!stat?.isDirectory()) {
+      throw new Error(`Additional source path is not a directory: ${source.path}`);
+    }
+
+    seenLabels.add(label);
+    roots.push({
+      rootPath,
+      label,
+      pathPrefix: `@${label}/`,
+    });
+  }
+
+  return roots;
+}
+
+function normalizeSourceLabel(label: string): string {
+  const normalized = label
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+  if (!normalized) {
+    throw new Error(`Invalid additional source label: "${label}"`);
+  }
+
+  return normalized;
 }

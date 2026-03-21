@@ -15,6 +15,7 @@ export interface DiscoveredFile {
   absolutePath: string;
   language: string;
   hash: string;
+  sourceLabel: string;
 }
 
 export interface ParsedSymbol {
@@ -58,7 +59,13 @@ export interface ParsedReference {
 export interface CartographConfig {
   languages: string[];
   exclude: string[];
+  additionalSources: AdditionalSourceConfig[];
   database: DatabaseConfig;
+}
+
+export interface AdditionalSourceConfig {
+  path: string;
+  label: string;
 }
 
 export interface DatabaseConfig {

@@ -4,6 +4,8 @@ import { openDatabase } from '../../src/db/connection.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { IndexPipeline } from '../../src/indexer/pipeline.js';
 import { join } from 'path';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
 import type { CartographConfig } from '../../src/types.js';
 
 const FIXTURES = join(import.meta.dirname, '..', 'fixtures', 'laravel-sample');
@@ -12,6 +14,7 @@ function testConfig(): CartographConfig {
   return {
     languages: ['php'],
     exclude: ['vendor/'],
+    additionalSources: [],
     database: { path: ':memory:' },
   };
 }
@@ -166,5 +169,72 @@ describe('Index Pipeline (Integration)', () => {
     expect(rows[0].language).toBe('php');
     expect(rows[0].hash).toMatch(/^[a-f0-9]{64}$/);
     expect((rows[0].lines_of_code as number)).toBeGreaterThan(0);
+  });
+
+  it('indexes additional source roots and resolves references across them', () => {
+    const repoDir = mkdtempSync(join(tmpdir(), 'cartograph-index-root-'));
+    const extraDir = mkdtempSync(join(tmpdir(), 'cartograph-index-extra-'));
+
+    try {
+      mkdirSync(join(repoDir, 'app'), { recursive: true });
+      writeFileSync(
+        join(repoDir, 'app', 'UsesBase.php'),
+        `<?php
+namespace App;
+
+use Shared\\BaseThing;
+
+class UsesBase
+{
+    public function make(): BaseThing
+    {
+        return new BaseThing();
+    }
+}
+`
+      );
+
+      writeFileSync(
+        join(extraDir, 'BaseThing.php'),
+        `<?php
+namespace Shared;
+
+class BaseThing
+{
+}
+`
+      );
+
+      const pipeline = new IndexPipeline(db);
+      pipeline.run(repoDir, {
+        languages: ['php'],
+        exclude: ['vendor/'],
+        additionalSources: [{ path: extraDir, label: 'shared-base' }],
+        database: { path: ':memory:' },
+      });
+
+      const files = db.prepare('SELECT path FROM files ORDER BY path').all() as { path: string }[];
+      expect(files.map((file) => file.path)).toEqual([
+        '@shared-base/BaseThing.php',
+        'app/UsesBase.php',
+      ]);
+
+      const refs = db.prepare(
+        `SELECT sr.reference_kind, sr.target_symbol_id
+         FROM symbol_references sr
+         JOIN symbols s ON s.id = sr.source_symbol_id
+         WHERE s.qualified_name = ?`
+      ).all('App\\UsesBase::make') as { reference_kind: string; target_symbol_id: number | null }[];
+
+      expect(refs).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ reference_kind: 'type_hint', target_symbol_id: expect.any(Number) }),
+          expect.objectContaining({ reference_kind: 'instantiation', target_symbol_id: expect.any(Number) }),
+        ])
+      );
+    } finally {
+      rmSync(repoDir, { recursive: true, force: true });
+      rmSync(extraDir, { recursive: true, force: true });
+    }
   });
 });
