@@ -24,29 +24,20 @@ export function discoverFiles(
       .map(([ext]) => ext)
   );
 
-  let filePaths: string[];
-
-  try {
-    const output = execSync(
-      'git ls-files --cached --others --exclude-standard',
-      { cwd: repoPath, encoding: 'utf-8', maxBuffer: 50 * 1024 * 1024 }
-    );
-    filePaths = output.trim().split('\n').filter(Boolean);
-  } catch {
-    filePaths = fg.sync('**/*', {
-      cwd: repoPath,
-      ignore: config.exclude,
-      dot: false,
-    });
+  if (allowedExtensions.size === 0) {
+    return [];
   }
+
+  const sourcePatterns = [...allowedExtensions].map((ext) => `**/*${ext}`);
+  const filePaths = discoverCandidatePaths(repoPath, config.exclude, sourcePatterns);
 
   // Apply config excludes
   const ig = ignore().add(config.exclude);
-  filePaths = filePaths.filter((p) => !ig.ignores(p));
+  const filteredPaths = filePaths.filter((p) => !ig.ignores(p));
 
   const files: DiscoveredFile[] = [];
 
-  for (const relativePath of filePaths) {
+  for (const relativePath of filteredPaths) {
     const ext = extname(relativePath);
     if (!allowedExtensions.has(ext)) continue;
 
@@ -64,4 +55,60 @@ export function discoverFiles(
   }
 
   return files;
+}
+
+function discoverCandidatePaths(
+  repoPath: string,
+  exclude: string[],
+  sourcePatterns: string[]
+): string[] {
+  const candidates = new Set<string>();
+
+  for (const path of discoverGitPaths(repoPath)) {
+    candidates.add(path);
+  }
+
+  // Supplement git discovery with a filesystem scan so branch-specific repo
+  // layouts do not hide valid source files from the indexer.
+  for (const path of fg.sync(sourcePatterns, {
+    cwd: repoPath,
+    ignore: exclude,
+    dot: false,
+    onlyFiles: true,
+    unique: true,
+    suppressErrors: true,
+    followSymbolicLinks: true,
+  })) {
+    candidates.add(path);
+  }
+
+  return [...candidates].sort();
+}
+
+function discoverGitPaths(repoPath: string): string[] {
+  const tracked = runGitCommand(
+    repoPath,
+    'git ls-files --cached --recurse-submodules'
+  ) ?? runGitCommand(repoPath, 'git ls-files --cached') ?? [];
+
+  const untracked = runGitCommand(
+    repoPath,
+    'git ls-files --others --exclude-standard'
+  ) ?? [];
+
+  return [...new Set([...tracked, ...untracked])];
+}
+
+function runGitCommand(repoPath: string, command: string): string[] | null {
+  try {
+    const output = execSync(command, {
+      cwd: repoPath,
+      encoding: 'utf-8',
+      maxBuffer: 50 * 1024 * 1024,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    return output.trim().split('\n').filter(Boolean);
+  } catch {
+    return null;
+  }
 }

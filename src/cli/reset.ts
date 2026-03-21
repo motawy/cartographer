@@ -7,6 +7,34 @@ import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+export function resetDatabase(
+  db: ReturnType<typeof openDatabase>,
+  migrationsDir: string = join(__dirname, '..', 'db', 'migrations')
+): void {
+  const foreignKeysEnabled = Number(db.pragma('foreign_keys', { simple: true })) !== 0;
+
+  db.pragma('foreign_keys = OFF');
+  try {
+    const objects = db.prepare(
+      `SELECT type, name
+       FROM sqlite_master
+       WHERE type IN ('table', 'view')
+         AND name NOT LIKE 'sqlite_%'`
+    ).all() as { type: 'table' | 'view'; name: string }[];
+
+    for (const { type, name } of objects) {
+      const escapedName = name.replaceAll('"', '""');
+      db.exec(`DROP ${type.toUpperCase()} IF EXISTS "${escapedName}"`);
+    }
+  } finally {
+    if (foreignKeysEnabled) {
+      db.pragma('foreign_keys = ON');
+    }
+  }
+
+  runMigrations(db, migrationsDir);
+}
+
 export function createResetCommand(): Command {
   return new Command('reset')
     .description('Drop all tables and recreate the schema from scratch')
@@ -31,17 +59,8 @@ export function createResetCommand(): Command {
 
       try {
         console.log('Dropping all tables...');
-        // Get all tables and drop them
-        const tables = db.prepare(
-          "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
-        ).all() as { name: string }[];
-
-        for (const { name } of tables) {
-          db.exec(`DROP TABLE IF EXISTS "${name}"`);
-        }
-
         console.log('Running migrations...');
-        runMigrations(db, join(__dirname, '..', 'db', 'migrations'));
+        resetDatabase(db, join(__dirname, '..', 'db', 'migrations'));
 
         console.log('\u2705 Database reset complete.');
       } finally {

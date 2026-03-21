@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { discoverFiles } from '../../src/indexer/file-walker.js';
 import { join } from 'path';
+import { execSync } from 'child_process';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
 import type { CartographConfig } from '../../src/types.js';
 
 const FIXTURES_DIR = join(import.meta.dirname, '..', 'fixtures', 'laravel-sample');
@@ -9,14 +12,14 @@ function makeConfig(overrides: Partial<CartographConfig> = {}): CartographConfig
   return {
     languages: ['php'],
     exclude: ['vendor/'],
-    database: { host: '', port: 0, name: '', user: '', password: '' },
+    database: { path: ':memory:' },
     ...overrides,
   };
 }
 
 describe('File Walker', () => {
-  it('discovers all PHP files in fixture project', async () => {
-    const files = await discoverFiles(FIXTURES_DIR, makeConfig());
+  it('discovers all PHP files in fixture project', () => {
+    const files = discoverFiles(FIXTURES_DIR, makeConfig());
 
     expect(files).toHaveLength(6);
     const paths = files.map((f) => f.relativePath).sort();
@@ -30,21 +33,21 @@ describe('File Walker', () => {
     ]);
   });
 
-  it('computes SHA-256 hashes (64-char hex)', async () => {
-    const files = await discoverFiles(FIXTURES_DIR, makeConfig());
+  it('computes SHA-256 hashes (64-char hex)', () => {
+    const files = discoverFiles(FIXTURES_DIR, makeConfig());
 
     for (const file of files) {
       expect(file.hash).toMatch(/^[a-f0-9]{64}$/);
     }
   });
 
-  it('sets language to php for .php files', async () => {
-    const files = await discoverFiles(FIXTURES_DIR, makeConfig());
+  it('sets language to php for .php files', () => {
+    const files = discoverFiles(FIXTURES_DIR, makeConfig());
     expect(files.every((f) => f.language === 'php')).toBe(true);
   });
 
-  it('respects exclude patterns', async () => {
-    const files = await discoverFiles(
+  it('respects exclude patterns', () => {
+    const files = discoverFiles(
       FIXTURES_DIR,
       makeConfig({ exclude: ['vendor/', 'app/Models/'] })
     );
@@ -54,8 +57,8 @@ describe('File Walker', () => {
     expect(paths).not.toContain('app/Models/User.php');
   });
 
-  it('returns both relative and absolute paths', async () => {
-    const files = await discoverFiles(FIXTURES_DIR, makeConfig());
+  it('returns both relative and absolute paths', () => {
+    const files = discoverFiles(FIXTURES_DIR, makeConfig());
 
     for (const file of files) {
       expect(file.absolutePath.startsWith(FIXTURES_DIR)).toBe(true);
@@ -64,20 +67,42 @@ describe('File Walker', () => {
     }
   });
 
-  it('filters by configured languages', async () => {
-    const files = await discoverFiles(
+  it('filters by configured languages', () => {
+    const files = discoverFiles(
       FIXTURES_DIR,
       makeConfig({ languages: ['typescript'] })
     );
     expect(files).toHaveLength(0);
   });
 
-  it('produces stable hashes for unchanged files', async () => {
-    const first = await discoverFiles(FIXTURES_DIR, makeConfig());
-    const second = await discoverFiles(FIXTURES_DIR, makeConfig());
+  it('produces stable hashes for unchanged files', () => {
+    const first = discoverFiles(FIXTURES_DIR, makeConfig());
+    const second = discoverFiles(FIXTURES_DIR, makeConfig());
 
     for (let i = 0; i < first.length; i++) {
       expect(first[i].hash).toBe(second[i].hash);
+    }
+  });
+
+  it('supplements git discovery with source files present on disk', () => {
+    const repoDir = mkdtempSync(join(tmpdir(), 'cartograph-file-walker-'));
+
+    try {
+      execSync('git init', { cwd: repoDir, stdio: 'ignore' });
+
+      writeFileSync(join(repoDir, '.gitignore'), 'ignored/\n');
+      writeFileSync(join(repoDir, 'tracked.php'), '<?php class Tracked {}');
+      mkdirSync(join(repoDir, 'ignored'), { recursive: true });
+      writeFileSync(join(repoDir, 'ignored', 'extra.php'), '<?php class Extra {}');
+
+      execSync('git add .gitignore tracked.php', { cwd: repoDir, stdio: 'ignore' });
+
+      const files = discoverFiles(repoDir, makeConfig({ exclude: [] }));
+      const paths = files.map((file) => file.relativePath).sort();
+
+      expect(paths).toEqual(['ignored/extra.php', 'tracked.php']);
+    } finally {
+      rmSync(repoDir, { recursive: true, force: true });
     }
   });
 });
