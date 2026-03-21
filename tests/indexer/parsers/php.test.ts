@@ -264,6 +264,23 @@ class UserTest {}
       expect(result.imports.get('UserModel')).toBe('App\\Models\\User');
     });
 
+    it('tracks single-segment global imports', () => {
+      const source = `<?php
+namespace Simpro\\Core\\Controller\\ContractorJob;
+
+use F;
+use Console;
+use DateTime;
+
+class Example {}
+`;
+      const result = parsePHP(parser.parse(source));
+
+      expect(result.imports.get('F')).toBe('F');
+      expect(result.imports.get('Console')).toBe('Console');
+      expect(result.imports.get('DateTime')).toBe('DateTime');
+    });
+
     it('resolves type names in extends/implements via imports', () => {
       const source = readFileSync(join(FIXTURES, 'app/Models/User.php'), 'utf-8');
       const result = parsePHP(parser.parse(source));

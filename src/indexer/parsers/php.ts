@@ -80,10 +80,8 @@ function extractUseStatements(
     const child = node.child(i)!;
 
     if (child.type === 'namespace_use_clause') {
-      const qualifiedNode = findChild(child, 'qualified_name');
-      if (!qualifiedNode) continue;
-
-      const qualifiedName = extractQualifiedNameText(qualifiedNode);
+      const qualifiedName = extractUseClauseName(child);
+      if (!qualifiedName) continue;
 
       // Check for alias: `use Foo\Bar as Baz`
       const aliasNode = findChildAfterType(child, 'as', 'name');
@@ -102,14 +100,8 @@ function extractUseStatements(
         const clause = child.child(j)!;
         if (clause.type !== 'namespace_use_clause') continue;
 
-        const nameNode =
-          findChild(clause, 'qualified_name') || findChild(clause, 'name');
-        if (!nameNode) continue;
-
-        const name =
-          nameNode.type === 'qualified_name'
-            ? extractQualifiedNameText(nameNode)
-            : nameNode.text;
+        const name = extractUseClauseName(clause);
+        if (!name) continue;
         const fullName = prefix ? `${prefix}\\${name}` : name;
         const shortName = name.split('\\').pop() || name;
         context.imports.set(shortName, fullName);
@@ -575,6 +567,15 @@ function extractQualifiedNameText(qualifiedNameNode: SyntaxNode): string {
     }
   }
   return parts.join('\\');
+}
+
+function extractUseClauseName(node: SyntaxNode): string | null {
+  const nameNode = findChild(node, 'qualified_name') || findChild(node, 'name');
+  if (!nameNode) return null;
+
+  return nameNode.type === 'qualified_name'
+    ? extractQualifiedNameText(nameNode)
+    : nameNode.text;
 }
 
 function findChild(

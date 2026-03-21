@@ -171,6 +171,45 @@ describe('ReferenceExtractor', () => {
       expect(insts[0].sourceQualifiedName).toBe('App\\Services\\UserService::init');
       expect(insts[0].targetQualifiedName).toBe('app\\repositories\\userrepository');
     });
+
+    it('resolves imported global classes from single-segment use statements', () => {
+      const refs = parseAndExtract(`<?php
+        namespace App\\Services;
+        use DateTime;
+        class UserService {
+            public function init(): void {
+                $date = new DateTime();
+                DateTime::createFromFormat('Y-m-d', '2024-01-01');
+            }
+        }
+      `);
+
+      const insts = refs.filter(r => r.kind === 'instantiation');
+      const statics = refs.filter(r => r.kind === 'static_call');
+
+      expect(insts).toHaveLength(1);
+      expect(insts[0].targetQualifiedName).toBe('datetime');
+      expect(statics).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ targetQualifiedName: 'datetime::createfromformat' }),
+        ])
+      );
+    });
+
+    it('keeps unimported class names in the current namespace', () => {
+      const refs = parseAndExtract(`<?php
+        namespace App\\Services;
+        class UserService {
+            public function init(): void {
+                $date = new DateTime();
+            }
+        }
+      `);
+
+      const insts = refs.filter(r => r.kind === 'instantiation');
+      expect(insts).toHaveLength(1);
+      expect(insts[0].targetQualifiedName).toBe('app\\services\\datetime');
+    });
   });
 
   describe('static calls', () => {
@@ -189,6 +228,31 @@ describe('ReferenceExtractor', () => {
       expect(statics).toHaveLength(1);
       expect(statics[0].sourceQualifiedName).toBe('App\\Repositories\\UserRepository::find');
       expect(statics[0].targetQualifiedName).toBe('app\\models\\user::find');
+    });
+
+    it('resolves single-segment global imports in static calls', () => {
+      const refs = parseAndExtract(`<?php
+        namespace Simpro\\Core\\Controller\\ContractorJob;
+        use F;
+        use Console;
+        use ContractorJob;
+        class Example {
+            public function run(): void {
+                F::filterParam();
+                Console::log();
+                ContractorJob::dispatch();
+            }
+        }
+      `);
+
+      const statics = refs.filter(r => r.kind === 'static_call');
+      expect(statics).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ targetQualifiedName: 'f::filterparam' }),
+          expect.objectContaining({ targetQualifiedName: 'console::log' }),
+          expect.objectContaining({ targetQualifiedName: 'contractorjob::dispatch' }),
+        ])
+      );
     });
 
     it('skips self:: and static:: calls', () => {
