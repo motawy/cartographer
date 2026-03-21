@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { mkdirSync, rmSync, writeFileSync } from 'fs';
 import Database from 'better-sqlite3';
 import { openDatabase } from '../../src/db/connection.js';
 import { runMigrations } from '../../src/db/migrate.js';
@@ -108,5 +109,54 @@ describe('cartograph_compare_many', () => {
 
     expect(result).toContain('### vs App\\MissingSibling');
     expect(result).toContain('Symbol not found');
+  });
+
+  it('shows baseline method bodies for missing methods when repo files are available', () => {
+    const repoRepo = new RepoRepository(db);
+    const fileRepo = new FileRepository(db);
+    const symbolRepo = new SymbolRepository(db);
+    const refRepo = new ReferenceRepository(db);
+
+    const tmpDir = '/tmp/cartograph-compare-many-body-test';
+    mkdirSync(tmpDir, { recursive: true });
+    writeFileSync(`${tmpDir}/baseline.php`, [
+      '<?php',
+      'class Baseline {',
+      '    protected function getSubRouteFolder(): string',
+      '    {',
+      "        return 'JobCostCenters';",
+      '    }',
+      '}',
+    ].join('\n'));
+    writeFileSync(`${tmpDir}/target.php`, [
+      '<?php',
+      'class Target {',
+      '}',
+    ].join('\n'));
+
+    try {
+      const repo = repoRepo.findOrCreate(tmpDir, 'compare-many-body');
+      const baselineFile = fileRepo.upsert(repo.id, 'baseline.php', 'php', 'cb1', 7);
+      const targetFile = fileRepo.upsert(repo.id, 'target.php', 'php', 'cb2', 3);
+
+      symbolRepo.replaceFileSymbols(baselineFile.id, [
+        makeClassWithMethods('Baseline', 'Test\\Baseline', [
+          { name: 'getSubRouteFolder', line: 3 },
+        ]),
+      ]);
+      symbolRepo.replaceFileSymbols(targetFile.id, [
+        makeClassWithMethods('Target', 'Test\\Target', []),
+      ]);
+
+      const result = handleCompareMany(
+        { repoId: repo.id, repoPath: tmpDir, symbolRepo, refRepo },
+        { baseline: 'Test\\Baseline', others: ['Test\\Target'] }
+      );
+
+      expect(result).toContain('Baseline implementations for missing methods');
+      expect(result).toContain("return 'JobCostCenters'");
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 });

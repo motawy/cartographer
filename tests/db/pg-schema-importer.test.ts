@@ -89,4 +89,40 @@ describe('buildImportedTables', () => {
       },
     ]);
   });
+
+  it('deduplicates repeated foreign-key column pairs from import rows', () => {
+    const tables = buildImportedTables(
+      [{ table_name: 'recurring_quotes' }, { table_name: 'recurring_job_team' }],
+      [],
+      [
+        {
+          constraint_name: 'fk_recurring_job_id',
+          source_table: 'recurring_job_team',
+          source_column: 'recurring_job_id',
+          target_table: 'recurring_quotes',
+          target_column: 'quote_id',
+        },
+        {
+          constraint_name: 'fk_recurring_job_id',
+          source_table: 'recurring_job_team',
+          source_column: 'recurring_job_id',
+          target_table: 'recurring_quotes',
+          target_column: 'quote_id',
+        },
+      ]
+    );
+
+    const teamTable = tables.find((table) => table.name === 'recurring_job_team');
+    expect(teamTable?.foreignKeys).toEqual([
+      {
+        constraintName: 'fk_recurring_job_id',
+        sourceColumns: ['recurring_job_id'],
+        targetTable: 'recurring_quotes',
+        normalizedTargetTable: 'recurring_quotes',
+        targetColumns: ['quote_id'],
+        sourcePath: null,
+        lineNumber: null,
+      },
+    ]);
+  });
 });

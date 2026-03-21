@@ -121,13 +121,20 @@ export function buildImportedTables(
   }
 
   const fkMap = new Map<string, MaterializedDbTable['foreignKeys'][number]>();
+  const fkPairs = new Map<string, Set<string>>();
   for (const row of foreignKeyRows) {
     const table = tables.get(normalizeSchemaName(row.source_table));
     if (!table) continue;
 
     const key = `${normalizeSchemaName(row.source_table)}::${normalizeSchemaName(row.constraint_name)}`;
     const existing = fkMap.get(key);
+    const pairKey = `${normalizeSchemaName(row.source_column)}->${normalizeSchemaName(row.target_column)}`;
     if (existing) {
+      const seenPairs = fkPairs.get(key)!;
+      if (seenPairs.has(pairKey)) {
+        continue;
+      }
+      seenPairs.add(pairKey);
       existing.sourceColumns.push(row.source_column);
       existing.targetColumns.push(row.target_column);
       continue;
@@ -143,6 +150,7 @@ export function buildImportedTables(
       lineNumber: null,
     };
     fkMap.set(key, foreignKey);
+    fkPairs.set(key, new Set([pairKey]));
     table.foreignKeys.push(foreignKey);
   }
 

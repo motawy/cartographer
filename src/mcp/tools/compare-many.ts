@@ -1,5 +1,5 @@
 import type { ToolDeps } from '../types.js';
-import { analyzeComparison, resolveSymbol } from './compare-shared.js';
+import { analyzeComparison, formatChild, resolveSymbol } from './compare-shared.js';
 
 interface CompareManyParams {
   baseline: string;
@@ -52,6 +52,12 @@ export function handleCompareMany(deps: ToolDeps, params: CompareManyParams): st
 
     lines.push(`- Resolved target: ${target.qualifiedName}`);
     lines.push(`- Missing from target compared to baseline (${missing.length}): ${formatNameList(missing)}`);
+    if (analysis.onlyInA.length > 0) {
+      lines.push('- Baseline implementations for missing methods:');
+      for (const entry of analysis.onlyInA) {
+        lines.push(indentBlock(formatChild(entry), 2));
+      }
+    }
     lines.push(`- Extra in target (${extra.length}): ${formatNameList(extra)}`);
     lines.push(`- Shared methods with different implementations (${differing.length}): ${formatNameList(differing)}`);
     lines.push('');
@@ -74,4 +80,12 @@ export function handleCompareMany(deps: ToolDeps, params: CompareManyParams): st
 
 function formatNameList(names: string[]): string {
   return names.length > 0 ? names.join(', ') : '(none)';
+}
+
+function indentBlock(value: string, spaces: number): string {
+  const prefix = ' '.repeat(spaces);
+  return value
+    .split('\n')
+    .map((line) => `${prefix}${line}`)
+    .join('\n');
 }

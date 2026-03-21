@@ -152,9 +152,11 @@ export function handleTableGraph(deps: TableGraphDeps, params: TableGraphParams)
       return aKey.localeCompare(bKey);
     });
     for (const edge of bucket) {
-      const source = `${edge.sourceTable}(${edge.sourceColumns.join(', ')})`;
-      const target = edge.targetColumns.length > 0
-        ? `${edge.targetTable}(${edge.targetColumns.join(', ')})`
+      const sourceColumns = dedupeNames(edge.sourceColumns);
+      const targetColumns = dedupeNames(edge.targetColumns);
+      const source = `${edge.sourceTable}(${sourceColumns.join(', ')})`;
+      const target = targetColumns.length > 0
+        ? `${edge.targetTable}(${targetColumns.join(', ')})`
         : edge.targetTable;
       lines.push(`- ${edge.direction}: ${source} -> ${target}`);
     }
@@ -180,15 +182,29 @@ function getSummary(
 }
 
 function pushEdge(edges: GraphEdge[], edgeKeys: Set<string>, edge: GraphEdge): void {
+  const sourceColumns = dedupeNames(edge.sourceColumns);
+  const targetColumns = dedupeNames(edge.targetColumns);
   const key = [
     edge.direction,
     normalizeSchemaName(edge.sourceTable),
-    edge.sourceColumns.map((column) => normalizeSchemaName(column)).join(','),
+    sourceColumns.map((column) => normalizeSchemaName(column)).join(','),
     normalizeSchemaName(edge.targetTable),
-    edge.targetColumns.map((column) => normalizeSchemaName(column)).join(','),
+    targetColumns.map((column) => normalizeSchemaName(column)).join(','),
   ].join('|');
 
   if (edgeKeys.has(key)) return;
   edgeKeys.add(key);
   edges.push(edge);
+}
+
+function dedupeNames(values: string[]): string[] {
+  const seen = new Set<string>();
+  const deduped: string[] = [];
+  for (const value of values) {
+    const normalized = normalizeSchemaName(value);
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    deduped.push(value);
+  }
+  return deduped;
 }

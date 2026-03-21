@@ -125,4 +125,43 @@ describe('cartograph_table_graph', () => {
     expect(result).toContain('Depth 2:');
     expect(result).toContain('- inbound: payments(order_id) -> orders(id)');
   });
+
+  it('deduplicates repeated column names when rendering edges', () => {
+    const schemaRepo = deps.schemaRepo!;
+    schemaRepo.replaceCurrentSchemaFromImport(deps.repoId, [
+      {
+        name: 'recurring_quotes',
+        normalizedName: 'recurring_quotes',
+        sourcePath: null,
+        lineStart: null,
+        lineEnd: null,
+        columns: [],
+        foreignKeys: [],
+      },
+      {
+        name: 'recurring_job_team',
+        normalizedName: 'recurring_job_team',
+        sourcePath: null,
+        lineStart: null,
+        lineEnd: null,
+        columns: [],
+        foreignKeys: [
+          {
+            constraintName: 'fk_recurring_job_id',
+            sourceColumns: ['recurring_job_id', 'recurring_job_id', 'recurring_job_id'],
+            targetTable: 'recurring_quotes',
+            normalizedTargetTable: 'recurring_quotes',
+            targetColumns: ['quote_id', 'quote_id', 'quote_id'],
+            sourcePath: null,
+            lineNumber: null,
+          },
+        ],
+      },
+    ]);
+
+    const result = handleTableGraph(deps, { name: 'recurring_quotes', depth: 1 });
+    expect(result).toContain('- inbound: recurring_job_team(recurring_job_id) -> recurring_quotes(quote_id)');
+    expect(result).not.toContain('recurring_job_id, recurring_job_id');
+    expect(result).not.toContain('quote_id, quote_id');
+  });
 });

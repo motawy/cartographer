@@ -62,9 +62,11 @@ export function handleTable(deps: TableDeps, params: TableParams): string {
     lines.push('');
     lines.push(`### Outbound Foreign Keys (${outgoing.length})`);
     for (const fk of outgoing) {
-      const source = fk.sourceColumns.join(', ');
-      const target = fk.targetColumns.length > 0
-        ? `${fk.targetTable}(${fk.targetColumns.join(', ')})`
+      const sourceColumns = dedupeNames(fk.sourceColumns);
+      const targetColumns = dedupeNames(fk.targetColumns);
+      const source = sourceColumns.join(', ');
+      const target = targetColumns.length > 0
+        ? `${fk.targetTable}(${targetColumns.join(', ')})`
         : fk.targetTable;
       lines.push(`- ${source} -> ${target}`);
     }
@@ -75,12 +77,25 @@ export function handleTable(deps: TableDeps, params: TableParams): string {
     lines.push(`### Incoming Foreign Keys From Tables (${incoming.length})`);
     for (const fk of incoming) {
       const sourceTable = fk.tableName ?? 'unknown_table';
-      const source = fk.sourceColumns.length > 0
-        ? `${sourceTable}(${fk.sourceColumns.join(', ')})`
+      const sourceColumns = dedupeNames(fk.sourceColumns);
+      const source = sourceColumns.length > 0
+        ? `${sourceTable}(${sourceColumns.join(', ')})`
         : sourceTable;
       lines.push(`- ${source}`);
     }
   }
 
   return lines.join('\n');
+}
+
+function dedupeNames(values: string[]): string[] {
+  const seen = new Set<string>();
+  const deduped: string[] = [];
+  for (const value of values) {
+    const normalized = normalizeSchemaName(value);
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    deduped.push(value);
+  }
+  return deduped;
 }
